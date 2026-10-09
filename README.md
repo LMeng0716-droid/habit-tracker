@@ -27,7 +27,7 @@
    npm run dev
    ```
 
-5. 在浏览器中输入终端显示的本地地址（通常是 `http://localhost:5173`）。关闭服务器时，在终端按 **Ctrl+C**。如果端口被占用，Vite会提示另一个端口。
+5. 在浏览器中输入终端显示的本地地址（通常是 `http://localhost:5173/habit-tracker/`）。关闭服务器时，在终端按 **Ctrl+C**。如果端口被占用，Vite会提示另一个端口。
 
 这里运行的是自己电脑上的服务器，不会把网站发布到互联网。请不要双击 index.html；应用需要通过开发服务器或构建预览运行。
 
@@ -39,7 +39,7 @@
 npm run dev -- --host 0.0.0.0
 ```
 
-在手机浏览器输入终端显示的 **Network** 地址，例如 `http://192.168.1.20:5173`。如果连不上，检查两台设备的网络、电脑防火墙是否允许该端口，以及Wi-Fi是否隔离设备。此方式用于本地调试，不是公网部署；不需要账号。
+在手机浏览器输入终端显示的 **Network** 地址，例如 `http://192.168.1.20:5173/habit-tracker/`。如果连不上，检查两台设备的网络、电脑防火墙是否允许该端口，以及Wi-Fi是否隔离设备。此方式用于本地调试，不是公网部署；不需要账号。
 
 **电脑 localhost、电脑局域网IP和手机浏览器是不同的数据空间。** 它们不会自动同步。端口、协议或域名改变也可能切换到另一份本地数据；需要迁移时使用JSON导出与导入。
 
@@ -115,3 +115,15 @@ docs/              调研、需求、开发计划与验收记录
 - 搜索、主题、CSV导出可根据实际反馈再加入。发布前仍需确定本项目许可证；当前没有自动沿用参考项目的许可。
 
 调研和原始规划分别见[开源调研](docs/open-source-research.md)、[产品需求](docs/product-requirements.md)、[开发计划](docs/development-plan.md)。
+
+## GitHub Pages 自动部署
+
+目标地址：<https://lmeng0716-droid.github.io/habit-tracker/>。
+
+仓库管理员首次需要打开 **Settings → Pages → Build and deployment → Source**，选择 **GitHub Actions**。然后合并部署配置PR到main；以后main更新会自动构建并部署。也可以在 **Actions → 部署到 GitHub Pages → Run workflow** 选择main手动触发。其他分支不会部署，PR本身不会发布。
+
+部署工作流使用Node24、npm ci、现有单元测试及生产构建，将dist交给官方Pages Actions。原有check.yml保持独立，继续执行完整检查和浏览器测试。请在Actions中查看实际部署结果；本地构建通过不代表网站已上线。
+
+Vite的base为 `/habit-tracker/`，构建资源使用该前缀；应用使用哈希路由，详情/统计页刷新不需要服务器重写或404跳转。index.html中的入口由Vite处理，不应手动给源码入口重复添加仓库前缀。
+
+GitHub Pages上的数据与本地预览分开保存；上线后如需迁移原记录，请在原浏览器地址导出JSON，再在Pages站点导入。
