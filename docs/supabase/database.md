@@ -1,5 +1,7 @@
 # 数据库 ER、字段与权限
 
+> 本文保留第一阶段设计记录；第二阶段已实现的 RPC、执行顺序与验证结果见 [同步 API](sync-api.md) 和 [操作手册](sync-api-operations.md)。
+
 本设计选择独立 `habit_api` 暴露业务表，`habit_private` 保存同步基础设施；不依赖 public 默认权限，也不暴露 auth schema。
 
 ```mermaid
