@@ -831,3 +831,26 @@ legend {
     transition: none !important;
   }
 }
+
+select,
+textarea {
+  font: inherit;
+  max-width: 100%;
+  padding: 0.6rem;
+  border: 1px solid #aab5b0;
+  border-radius: 0.5rem;
+  background: white;
+  color: #223c32;
+}
+textarea {
+  min-height: 8rem;
+  width: 100%;
+  resize: vertical;
+}
+.note-text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.actions {
+  flex-wrap: wrap;
+}

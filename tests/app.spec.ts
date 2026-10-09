@@ -1,6 +1,6 @@
 import { test, expect, type Page } from "@playwright/test";
 import { readFile } from "node:fs/promises";
-const key = "daily-progress:v1";
+const key = "daily-progress:v2";
 const today = "2026-10-09";
 const fixture = {
   schemaVersion: 1,
@@ -327,4 +327,142 @@ test("局域网HTTP使用的随机ID不依赖secure-context randomUUID", async (
   await expect(
     page.getByRole("button", { name: "✓ 已完成 · 撤销打卡" }),
   ).toBeVisible();
+});
+
+test("v1 迁移保留原文，分类、备注、排序刷新后保留", async ({ page }) => {
+  await page.setViewportSize({ width: 360, height: 780 });
+  await start(page);
+  await page.evaluate(
+    (f) => localStorage.setItem("daily-progress:v1", JSON.stringify(f)),
+    fixture,
+  );
+  await page.reload();
+  const original = await page.evaluate(() =>
+    localStorage.getItem("daily-progress:v1"),
+  );
+  const beforeMigration = page.waitForEvent("download");
+  await page.getByRole("button", { name: "导出升级前原始数据" }).click();
+  expect(await readFile((await (await beforeMigration).path())!, "utf8")).toBe(
+    original,
+  );
+  await page.getByRole("button", { name: "今日备注", exact: true }).click();
+  await page.getByLabel("备注内容").fill("读到第三章");
+  await page.getByRole("button", { name: "保存备注" }).click();
+  await page.getByRole("button", { name: "＋ 今日打卡" }).click();
+  await page.getByRole("button", { name: "✓ 已完成 · 撤销打卡" }).click();
+  await page
+    .getByRole("navigation")
+    .getByRole("link", { name: "设置" })
+    .click();
+  await page.getByRole("button", { name: "创建分类" }).click();
+  await page.getByLabel("分类名称").fill("阅读计划");
+  await page.getByRole("button", { name: "保存分类" }).click();
+  await page
+    .getByRole("navigation")
+    .getByRole("link", { name: "今天" })
+    .click();
+  await page.getByRole("button", { name: "编辑阅读10分钟" }).click();
+  await page
+    .getByLabel("分类", { exact: true })
+    .selectOption({ label: "阅读计划" });
+  await page.getByRole("button", { name: "保存习惯" }).click();
+  await add(page, "散步");
+  await page.getByRole("button", { name: "上移散步" }).click();
+  await page.reload();
+  await expect(page.locator(".habit-card h3").first()).toHaveText("散步");
+  await page.getByLabel("按分类筛选").selectOption({ label: "阅读计划" });
+  await expect(page.locator(".habit-card")).toHaveCount(1);
+  await expect(
+    page.getByRole("button", { name: "上移阅读10分钟" }),
+  ).toHaveCount(0);
+  const saved = await page.evaluate(
+    (k) => JSON.parse(localStorage.getItem(k)!),
+    key,
+  );
+  expect(saved.notes[0].text).toBe("读到第三章");
+  expect(saved.schemaVersion).toBe(2);
+  expect(
+    await page.evaluate(() => localStorage.getItem("daily-progress:v1")),
+  ).toBe(original);
+  await page
+    .getByRole("navigation")
+    .getByRole("link", { name: "设置" })
+    .click();
+  await page.getByRole("button", { name: "删除分类阅读计划" }).click();
+  await page.getByRole("button", { name: "确认", exact: true }).click();
+  expect(
+    await page.evaluate(
+      (k) => JSON.parse(localStorage.getItem(k)!).habits.length,
+      key,
+    ),
+  ).toBe(2);
+  await expect
+    .poll(() =>
+      page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
+    )
+    .toBe(true);
+});
+
+test("周期编辑保留历史，指定星期无计划日不可打卡，历史备注独立", async ({
+  page,
+}) => {
+  await start(page);
+  await seed(page);
+  await page.getByRole("button", { name: "编辑阅读10分钟" }).click();
+  await page.getByLabel("重复周期").selectOption("weekdays");
+  await page.getByRole("button", { name: "保存习惯" }).click();
+  const saved = await page.evaluate(
+    (k) => JSON.parse(localStorage.getItem(k)!),
+    key,
+  );
+  expect(saved.habits[0].scheduleHistory[1].effectiveDate).toBe("2026-10-12");
+  expect(saved.completionRecords).toHaveLength(6);
+  await page.clock.setSystemTime(new Date("2026-10-13T10:00:00+08:00"));
+  await page.clock.runFor(1100);
+  await expect(
+    page.getByRole("button", { name: "＋ 今日打卡" }),
+  ).toBeDisabled();
+  await expect(page.getByText(/今日未计划/)).toBeVisible();
+  await page.getByRole("link", { name: "阅读10分钟", exact: true }).click();
+  await page.getByLabel("备注日期").fill("2026-10-11");
+  await page.getByLabel("备注内容").fill("今天没有计划，仍可写备注");
+  await page.getByRole("button", { name: "保存备注" }).click();
+  await page.reload();
+  await expect(page.getByText("今天没有计划，仍可写备注")).toBeVisible();
+});
+
+test("桌面拖动排序及每日总结，JSON v2 备份保留新实体", async ({ page }) => {
+  await start(page);
+  await add(page, "阅读");
+  await add(page, "运动");
+  await page
+    .locator(".habit-card")
+    .first()
+    .dragTo(page.locator(".habit-card").nth(1));
+  await expect(page.locator(".habit-card h3").first()).toHaveText("运动");
+  await page.getByRole("button", { name: "编辑当天总结" }).click();
+  await page.getByLabel("备注内容").fill("完成了第一步");
+  await page.getByRole("button", { name: "保存备注" }).click();
+  await page
+    .getByRole("navigation")
+    .getByRole("link", { name: "设置" })
+    .click();
+  const pending = page.waitForEvent("download");
+  await page.getByRole("button", { name: "导出 JSON 备份" }).click();
+  const raw = await readFile((await (await pending).path())!, "utf8");
+  expect(JSON.parse(raw).notes[0].habitId).toBeNull();
+  expect(JSON.parse(raw).categories).toHaveLength(6);
+  await page.getByLabel("选择JSON备份").setInputFiles({
+    name: "v2.json",
+    mimeType: "application/json",
+    buffer: Buffer.from(raw),
+  });
+  await page.getByRole("button", { name: "确认替换并导入" }).click();
+  await page.reload();
+  expect(
+    await page.evaluate(
+      (k) => JSON.parse(localStorage.getItem(k)!).notes[0].text,
+      key,
+    ),
+  ).toBe("完成了第一步");
 });

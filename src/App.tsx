@@ -1,6 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import {
   archiveHabit,
+  planned,
+  canComplete,
+  scheduleAt,
+  changeSchedule,
+  removeCategory,
+  reorderHabits,
+  setNote,
   completedDates,
   emptySnapshot,
   eligible,
@@ -14,21 +21,29 @@ import {
   toggleCompletion,
   type Habit,
   type Snapshot,
+  type NormalizedSnapshot,
 } from "./domain";
-import { load, save, STORAGE_KEY } from "./storage";
+import {
+  load,
+  save,
+  readRaw,
+  sourceRaw,
+  STORAGE_KEY,
+  LEGACY_KEY,
+} from "./storage";
 import { HabitForm, Modal, MonthPicker } from "./components";
 
 type Mode = "ready" | "damaged" | "unavailable" | "conflict";
 function initialState(): {
-  data: Snapshot;
+  data: NormalizedSnapshot;
   raw: string | null;
   mode: Mode;
   error: string;
 } {
-  let result: { data: Snapshot; raw: string | null };
+  let result: { data: NormalizedSnapshot; raw: string | null };
   let raw: string | null = null;
   try {
-    raw = localStorage.getItem(STORAGE_KEY);
+    raw = readRaw(localStorage);
     result = load(localStorage);
   } catch (e) {
     return {
@@ -81,9 +96,34 @@ export default function App() {
   const [notice, setNotice] = useState("");
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
+  const [categoryFilter, setCategoryFilter] = useState("all");
+  const [noteEditor, setNoteEditor] = useState<{
+    habitId: string | null;
+    date: string;
+    text: string;
+  } | null>(null);
+  const [categoryEditor, setCategoryEditor] = useState<{
+    id: string;
+    name: string;
+  } | null>(null);
+  const [dragId, setDragId] = useState<string | null>(null);
   const data = state.data;
   const writable = state.mode === "ready";
-  const active = data.habits.filter((h) => !h.archivedDate);
+  const active = data.habits
+    .filter((h) => !h.archivedDate)
+    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+  const visible = active.filter(
+    (h) => categoryFilter === "all" || (h.categoryId ?? "") === categoryFilter,
+  );
+  const scheduled = active.filter((h) => planned(h, today, today));
+  const editNote = (habitId: string | null, date: string) =>
+    setNoteEditor({
+      habitId,
+      date,
+      text:
+        data.notes?.find((n) => n.habitId === habitId && n.date === date)
+          ?.text ?? "",
+    });
   const selectedHabit = page.startsWith("habit/")
     ? data.habits.find((h) => h.id === page.slice(6))
     : undefined;
@@ -95,7 +135,7 @@ export default function App() {
     const tick = () => setToday(localDate());
     const timer = setInterval(tick, 1000);
     const storage = (e: StorageEvent) => {
-      if (e.key === STORAGE_KEY || e.key === null)
+      if (e.key === STORAGE_KEY || e.key === LEGACY_KEY || e.key === null)
         setState((s) => ({
           ...s,
           mode: "conflict",
@@ -160,7 +200,7 @@ export default function App() {
       setNotice(`导入失败：${message(e)} 原数据未修改。`);
     }
   }
-  const done = active.filter((h) =>
+  const done = scheduled.filter((h) =>
     completedDates(data, h.id).has(today),
   ).length;
   const dates = selectedHabit
@@ -247,7 +287,9 @@ export default function App() {
             <button onClick={() => location.reload()}>刷新并重试</button>
             {state.raw !== null && (
               <button
-                onClick={() => download(state.raw!, "每日进步-原始数据.json")}
+                onClick={() =>
+                  download(sourceRaw(state.raw)!, "每日进步-原始数据.json")
+                }
               >
                 导出原始数据
               </button>
@@ -255,6 +297,18 @@ export default function App() {
             {state.mode === "damaged" && (
               <button onClick={() => navigate("settings")}>从备份恢复</button>
             )}
+          </section>
+        )}
+        {state.raw?.startsWith("legacy:") && state.mode === "ready" && (
+          <section className="notice banner">
+            <p>已安全读取 v1。首次保存将写入 v2，原 v1 保留。建议先备份。</p>
+            <button
+              onClick={() =>
+                download(sourceRaw(state.raw)!, "每日进步-升级前-v1.json")
+              }
+            >
+              导出升级前原始数据
+            </button>
           </section>
         )}
         {notice && (
@@ -273,14 +327,17 @@ export default function App() {
                 <h2>
                   {active.length ? (
                     <>
-                      已完成 <strong>{done}</strong> / {active.length} 个习惯
+                      已完成 <strong>{done}</strong> / {scheduled.length}{" "}
+                      个计划习惯
                     </>
                   ) : (
                     "让第一件小事，成为开始"
                   )}
                 </h2>
                 <p>
-                  {active.length && done === active.length
+                  {active.length &&
+                  scheduled.length > 0 &&
+                  done === scheduled.length
                     ? "今天的小目标都完成了，给自己一点肯定。"
                     : "认真对待每一小步，进步会慢慢发生。"}
                 </p>
@@ -288,7 +345,7 @@ export default function App() {
                   <progress
                     aria-label="今日整体完成进度"
                     value={done}
-                    max={active.length}
+                    max={Math.max(1, scheduled.length)}
                   />
                 )}
               </div>
@@ -300,7 +357,22 @@ export default function App() {
               <h2>
                 我的习惯 <span>{active.length}</span>
               </h2>
-              <small>每天一次，按自己的节奏</small>
+              <label>
+                按分类筛选{" "}
+                <select
+                  aria-label="按分类筛选"
+                  value={categoryFilter}
+                  onChange={(e) => setCategoryFilter(e.target.value)}
+                >
+                  <option value="all">全部习惯</option>
+                  <option value="">未分类</option>
+                  {data.categories?.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
             </div>
             {!active.length ? (
               <section className="empty">
@@ -317,13 +389,24 @@ export default function App() {
               </section>
             ) : (
               <div className="habit-grid">
-                {active.map((h) => {
+                {visible.map((h) => {
                   const completed = completedDates(data, h.id);
                   const checked = completed.has(today);
                   const current = streaks(completed, today).current;
                   return (
                     <article
                       key={h.id}
+                      draggable={writable && categoryFilter === "all"}
+                      onDragStart={() => setDragId(h.id)}
+                      onDragOver={(e) => e.preventDefault()}
+                      onDrop={() => {
+                        if (dragId && categoryFilter === "all")
+                          commit(
+                            reorderHabits(data, dragId, h.id),
+                            "排序已保存。",
+                          );
+                        setDragId(null);
+                      }}
                       className={`habit-card color-${h.color} ${checked ? "is-done" : ""}`}
                     >
                       <div className="card-top">
@@ -342,7 +425,51 @@ export default function App() {
                       <h3>
                         <a href={`#habit/${h.id}`}>{h.name}</a>
                       </h3>
-                      <p>{checked ? "今天已完成，做得很好" : "今天还未完成"}</p>
+                      <p>
+                        {data.categories?.find((c) => c.id === h.categoryId)
+                          ?.name ?? "未分类"}{" "}
+                        ·{" "}
+                        {scheduleAt(h, today).kind === "weeklyQuota"
+                          ? "周次数计划（不计每日完成率）"
+                          : planned(h, today, today)
+                            ? "今日计划"
+                            : "今日未计划"}
+                      </p>
+                      <p>
+                        {checked
+                          ? "今天已完成，做得很好"
+                          : canComplete(h, today, today)
+                            ? "今天还未完成"
+                            : "今天未计划"}
+                      </p>
+                      <div className="actions">
+                        <button
+                          disabled={!writable}
+                          onClick={() => editNote(h.id, today)}
+                        >
+                          今日备注
+                        </button>
+                        {categoryFilter === "all" &&
+                          [-1, 1].map((delta) => {
+                            const i = active.findIndex((x) => x.id === h.id);
+                            const target = active[i + delta];
+                            return (
+                              <button
+                                key={delta}
+                                aria-label={`${delta < 0 ? "上移" : "下移"}${h.name}`}
+                                disabled={!writable || !target}
+                                onClick={() =>
+                                  commit(
+                                    reorderHabits(data, h.id, target.id),
+                                    "排序已保存。",
+                                  )
+                                }
+                              >
+                                {delta < 0 ? "上移" : "下移"}
+                              </button>
+                            );
+                          })}
+                      </div>
                       <div className="streak">
                         <strong>{current}</strong> 天连续{" "}
                         <span>· 累计 {completed.size} 天</span>
@@ -351,7 +478,7 @@ export default function App() {
                         className={
                           checked ? "check-button checked" : "check-button"
                         }
-                        disabled={!writable || !eligible(h, today, today)}
+                        disabled={!writable || !canComplete(h, today, today)}
                         onClick={() => toggle(h, today)}
                       >
                         {checked ? "✓ 已完成 · 撤销打卡" : "＋ 今日打卡"}
@@ -361,6 +488,29 @@ export default function App() {
                 })}
               </div>
             )}
+            <section className="panel">
+              <h2>当天总体总结</h2>
+              <p>
+                {data.notes?.find((n) => n.habitId === null && n.date === today)
+                  ?.text || "尚未记录"}
+              </p>
+              <button
+                disabled={!writable}
+                onClick={() => editNote(null, today)}
+              >
+                编辑当天总结
+              </button>
+              <label className="field">
+                历史总结日期
+                <input
+                  type="date"
+                  max={today}
+                  onChange={(e) => {
+                    if (e.target.value) editNote(null, e.target.value);
+                  }}
+                />
+              </label>
+            </section>
             <p className="page-footnote">每天的记录，都是你认真生活的证据。</p>
           </>
         )}
@@ -378,8 +528,8 @@ export default function App() {
               <p>
                 {selectedHabit.createdDate} 开始 ·{" "}
                 {selectedHabit.archivedDate
-                  ? `已于 ${selectedHabit.archivedDate} 归档，历史只读`
-                  : "每天一次"}
+                  ? `已于 ${selectedHabit.archivedDate} 归档，打卡历史只读，备注可编辑`
+                  : "周期按历史计划执行"}
               </p>
               <div className="actions">
                 {!selectedHabit.archivedDate && (
@@ -428,6 +578,9 @@ export default function App() {
                           commit(
                             {
                               ...data,
+                              notes: data.notes?.filter(
+                                (n) => n.habitId !== selectedHabit.id,
+                              ),
                               habits: data.habits.filter(
                                 (h) => h.id !== selectedHabit.id,
                               ),
@@ -502,7 +655,7 @@ export default function App() {
                   <div key={`blank-${i}`} />
                 ))}
                 {monthDays.map((date) => {
-                  const ok = eligible(selectedHabit, date, today);
+                  const ok = canComplete(selectedHabit, date, today);
                   const checked = dates.has(date);
                   return (
                     <button
@@ -553,6 +706,43 @@ export default function App() {
                 </div>
               )}
             </section>
+            <section className="panel">
+              <h2>习惯每日备注</h2>
+              <label className="field">
+                备注日期
+                <input
+                  type="date"
+                  min={selectedHabit.createdDate}
+                  max={selectedHabit.archivedDate ?? today}
+                  defaultValue={today}
+                  onChange={(e) => {
+                    if (e.target.value)
+                      editNote(selectedHabit.id, e.target.value);
+                  }}
+                />
+              </label>
+              <button
+                disabled={!writable || !!selectedHabit.archivedDate}
+                onClick={() => editNote(selectedHabit.id, today)}
+              >
+                编辑今日备注
+              </button>
+              {data.notes
+                ?.filter((n) => n.habitId === selectedHabit.id)
+                .sort((a, b) => b.date.localeCompare(a.date))
+                .map((n) => (
+                  <div key={n.id}>
+                    <strong>{n.date}</strong>
+                    <p className="note-text">{n.text}</p>
+                    <button
+                      disabled={!writable}
+                      onClick={() => editNote(n.habitId, n.date)}
+                    >
+                      编辑 {n.date} 备注
+                    </button>
+                  </div>
+                ))}
+            </section>
           </>
         )}
         {page === "stats" && (
@@ -566,7 +756,9 @@ export default function App() {
               />
             </div>
             <p className="muted">
-              完成率仅统计创建后至今天的有效天数，归档当天起不再计入。连续天数使用全部历史。
+              完成率仅统计历史计划中的每天/指定星期有效日；每周 N
+              次不计每日分母（周期达标统计将在阶段 2
+              提供）。归档当天起不计入。连续天数表示实际连续打卡日，不是连续达标周。
             </p>
             {!data.habits.length && (
               <section className="empty">
@@ -651,7 +843,7 @@ export default function App() {
                 />
               </div>
               <p className="muted">
-                仅支持本应用v1格式，最大5 MiB。导入将整体替换，不会合并。
+                支持本应用v1/v2格式，最大5 MiB。导入将整体替换，不会合并。
               </p>
             </section>
             <section className="panel">
@@ -671,6 +863,48 @@ export default function App() {
                 <p>还没有归档的习惯。</p>
               )}
             </section>
+            <section className="panel">
+              <h2>习惯分类</h2>
+              {data.categories?.map((c) => (
+                <div className="actions" key={c.id}>
+                  <span>{c.name}</span>
+                  {!c.preset && (
+                    <>
+                      <button
+                        disabled={!writable}
+                        onClick={() =>
+                          setCategoryEditor({ id: c.id, name: c.name })
+                        }
+                      >
+                        重命名{c.name}
+                      </button>
+                      <button
+                        disabled={!writable}
+                        onClick={() =>
+                          confirm(
+                            "删除分类？",
+                            "关联习惯保留并变为未分类。",
+                            () =>
+                              commit(
+                                removeCategory(data, c.id),
+                                "分类已删除，习惯保留。",
+                              ),
+                          )
+                        }
+                      >
+                        删除分类{c.name}
+                      </button>
+                    </>
+                  )}
+                </div>
+              ))}
+              <button
+                disabled={!writable}
+                onClick={() => setCategoryEditor({ id: newId(), name: "" })}
+              >
+                创建分类
+              </button>
+            </section>
             <section className="panel danger-zone">
               <h2>清空全部数据</h2>
               <p>删除全部习惯和记录，无法撤销。请先导出备份。</p>
@@ -689,7 +923,7 @@ export default function App() {
               </button>
             </section>
             <p className="page-footnote">
-              每日进步 v1.0 · 无账户，无云同步，无追踪
+              每日进步 v2 阶段1 · 无账户，无云同步，无追踪
             </p>
           </>
         )}
@@ -706,7 +940,8 @@ export default function App() {
               .filter((h) => form === "new" || h.id !== form.id)
               .map((h) => h.name)}
             onClose={() => setForm(null)}
-            onSave={(name, color) => {
+            categories={data.categories ?? []}
+            onSave={(name, color, categoryId, schedule) => {
               const next =
                 form === "new"
                   ? {
@@ -719,18 +954,140 @@ export default function App() {
                           color,
                           createdDate: localDate(),
                           createdAt: Date.now(),
+                          categoryId,
+                          order:
+                            Math.max(
+                              -1,
+                              ...data.habits.map((h) => h.order ?? 0),
+                            ) + 1,
+                          scheduleHistory: [
+                            {
+                              id: newId(),
+                              effectiveDate: localDate(),
+                              schedule,
+                            },
+                          ],
                         },
                       ],
                     }
                   : {
                       ...data,
                       habits: data.habits.map((h) =>
-                        h.id === form.id ? { ...h, name, color } : h,
+                        h.id === form.id
+                          ? {
+                              ...changeSchedule(h, schedule, localDate()),
+                              name,
+                              color,
+                              categoryId,
+                            }
+                          : h,
                       ),
                     };
               if (commit(next, "习惯已保存。")) setForm(null);
             }}
           />
+        )}
+        {categoryEditor && (
+          <Modal title="编辑分类" onClose={() => setCategoryEditor(null)}>
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                const name = categoryEditor.name.trim();
+                if (!name || [...name].length > 30) {
+                  setNotice("分类名称需1～30个字。");
+                  return;
+                }
+                const categories = data.categories ?? [];
+                if (
+                  commit(
+                    {
+                      ...data,
+                      categories: categories.some(
+                        (c) => c.id === categoryEditor.id,
+                      )
+                        ? categories.map((c) =>
+                            c.id === categoryEditor.id ? { ...c, name } : c,
+                          )
+                        : [
+                            ...categories,
+                            { id: categoryEditor.id, name, preset: false },
+                          ],
+                    },
+                    "分类已保存。",
+                  )
+                )
+                  setCategoryEditor(null);
+              }}
+            >
+              <label className="field">
+                分类名称
+                <input
+                  data-initial-focus
+                  value={categoryEditor.name}
+                  onChange={(e) =>
+                    setCategoryEditor({
+                      ...categoryEditor,
+                      name: e.target.value,
+                    })
+                  }
+                />
+              </label>
+              <button disabled={!writable} type="submit">
+                保存分类
+              </button>
+            </form>
+          </Modal>
+        )}
+        {noteEditor && (
+          <Modal
+            title="编辑每日备注"
+            onClose={() => {
+              if (!noteEditor.text || window.confirm("放弃未保存的备注？"))
+                setNoteEditor(null);
+            }}
+          >
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                try {
+                  if (
+                    commit(
+                      setNote(
+                        data,
+                        noteEditor.habitId,
+                        noteEditor.date,
+                        noteEditor.text,
+                        today,
+                      ),
+                      "备注已保存。",
+                    )
+                  )
+                    setNoteEditor(null);
+                } catch (e) {
+                  setNotice(message(e));
+                }
+              }}
+            >
+              <p>
+                {noteEditor.date} ·{" "}
+                {noteEditor.habitId === null ? "当天总结" : "习惯备注"}
+              </p>
+              <label className="field">
+                备注内容
+                <textarea
+                  data-initial-focus
+                  maxLength={2000}
+                  value={noteEditor.text}
+                  onChange={(e) =>
+                    setNoteEditor({ ...noteEditor, text: e.target.value })
+                  }
+                />
+              </label>
+              <button disabled={!writable} type="submit">
+                保存备注
+              </button>
+            </form>
+          </Modal>
         )}
         {confirmation && (
           <Modal
@@ -764,7 +1121,7 @@ export default function App() {
               <button
                 onClick={() =>
                   download(
-                    state.raw ?? JSON.stringify(data, null, 2),
+                    sourceRaw(state.raw) ?? JSON.stringify(data, null, 2),
                     `每日进步-替换前-${today}.json`,
                   )
                 }
