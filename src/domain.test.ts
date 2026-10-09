@@ -113,13 +113,17 @@ describe("月完成率", () => {
 describe("备份校验", () => {
   it("往返保存习惯及记录且不保留外来字段", () => {
     const d = data(["2026-10-08"]);
-    expect(parseSnapshot(JSON.stringify(d), today)).toEqual(d);
+    const upgraded = parseSnapshot(JSON.stringify(d), today);
+    expect(upgraded.schemaVersion).toBe(2);
+    expect(upgraded.habits[0]).toMatchObject(habit);
+    expect(upgraded.completionRecords[0]).toMatchObject(d.completionRecords[0]);
+    expect(parseSnapshot(JSON.stringify(upgraded), today)).toEqual(upgraded);
     expect(
       parseSnapshot(JSON.stringify({ ...d, untrusted: 1 }), today),
     ).not.toHaveProperty("untrusted");
   });
   it.each([
-    ["未知版本", { ...data(), schemaVersion: 2 }],
+    ["未知版本", { ...data(), schemaVersion: 3 }],
     ["重复ID", { ...data(), habits: [habit, habit] }],
     ["空名称", { ...data(), habits: [{ ...habit, name: " " }] }],
     ["超长名称", { ...data(), habits: [{ ...habit, name: "文".repeat(31) }] }],
