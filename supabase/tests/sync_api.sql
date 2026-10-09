@@ -159,9 +159,24 @@ reset role;
 -- Check ownership posture and explicit execution grants.
 select pg_temp.assert(not (select rolbypassrls or rolsuper or rolcanlogin from pg_roles where rolname='habit_rpc_owner'),'owner no login/bypass/superuser');
 select pg_temp.assert(not pg_has_role('authenticated','habit_rpc_owner','MEMBER'),'clients cannot SET ROLE API owner');
-select pg_temp.assert(exists(select 1 from pg_auth_members m join pg_roles member_role on member_role.oid=m.member join pg_roles target_role on target_role.oid=m.roleid where member_role.rolname='managed_migration_admin' and target_role.rolname='habit_rpc_owner' and m.admin_option),'PG16 migration administrator retains management capability');
+select pg_temp.assert(current_setting('server_version_num')::integer < 160000 or exists(select 1 from pg_auth_members m join pg_roles member_role on member_role.oid=m.member join pg_roles target_role on target_role.oid=m.roleid where member_role.rolname='managed_migration_admin' and target_role.rolname='habit_rpc_owner' and m.admin_option),'PG16 migration administrator retains management capability');
 select pg_temp.assert(not has_schema_privilege('habit_rpc_owner','habit_api','CREATE') and not has_schema_privilege('habit_rpc_owner','habit_private','CREATE'),'temporary schema CREATE revoked');
 select pg_temp.assert(not has_function_privilege('anon','habit_api.apply_operations(jsonb)','EXECUTE'),'anon execute revoked');
 select pg_temp.assert(not has_function_privilege('authenticated','habit_private.schedule(jsonb)','EXECUTE'),'private helper execute revoked');
+-- Audit every function, not just the primary write RPC.
+select pg_temp.assert(not exists(
+  select 1 from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+  where n.nspname in ('habit_api','habit_private') and
+    (p.proowner <> 'habit_rpc_owner'::regrole or not coalesce(p.proconfig @> array['search_path=""'],false)
+     or has_function_privilege('anon',p.oid,'EXECUTE')
+     or (n.nspname='habit_private' and has_function_privilege('authenticated',p.oid,'EXECUTE')))
+),'all function owners, fixed search_path and execute boundaries');
+select pg_temp.assert((select count(*) from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+  where n.nspname='habit_api' and p.prosecdef)=4,'only four public definer entry points');
+select pg_temp.assert(not exists(select 1 from pg_class c join pg_namespace n on n.oid=c.relnamespace
+  where n.nspname in ('habit_api','habit_private') and c.relkind='r' and
+    (not c.relrowsecurity or not c.relforcerowsecurity or c.relowner='habit_rpc_owner'::regrole
+     or has_table_privilege('authenticated',c.oid,'INSERT,UPDATE,DELETE,TRUNCATE,TRIGGER,REFERENCES'))),
+  'every table forced RLS, separate owner, no direct client write grants');
 rollback;
 \echo 'PASS sync API auth, isolation, CAS, idempotency, business rules, paging, tombstones and rollback'

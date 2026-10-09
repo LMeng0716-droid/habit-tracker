@@ -1,6 +1,6 @@
 # 第二阶段验证记录与后续验收
 
-测试命令 `bash supabase/tests/run-local.sh`：创建新本地Docker PostgreSQL16容器，无端口映射；固定已验证镜像digest，测试密码在运行时随机生成，不写入仓库；退出时清理容器。Python3为并发测试的唯一额外运行条件，不引入应用依赖。
+测试命令 `bash supabase/tests/run-local.sh`：创建新本地Docker PostgreSQL15/16容器，无端口映射；固定已验证镜像digest，测试密码在运行时随机生成，不写入仓库；退出时清理容器。Python3为并发测试的唯一额外运行条件，不引入应用依赖。
 
 自动化文件：
 
@@ -32,11 +32,13 @@
 
 ## 本次实际结果（2026-10-09）
 
-- 隔离PostgreSQL16基础RLS和新增API断言：通过；两份migration在NOSUPERUSER/NOBYPASSRLS迁移管理员下执行成功。
-- 真实重叠连接并发场景：3组全部通过。
+- 隔离PostgreSQL15/16基础RLS和新增API断言：通过；两份migration在NOSUPERUSER/NOBYPASSRLS迁移管理员下执行成功。
+- 真实重叠连接并发场景：每个版本6组全部通过（共12组）。
 - 现有单元测试：41/41通过。
 - Chromium浏览器回归：14/14通过。
 - type-check、format:check、生产build、shell语法及diff空白检查：通过。
 - 开发期间修正测试脚本括号错误；权限收尾验证发现PG16禁止向自己的grantor反授ADMIN，已改为保留创建者的既有管理授权并增加断言。随后完整重跑通过；结果使用最后完整运行，不拼接不同轮次的成功数。
 
 新增sync-api.yml让push/PR中的数据库变更执行相同隔离测试，没有生产连接或部署步骤。GitHub Actions远端结果尚未观测，不能称CI已经通过。浏览器套件只验证现有本地网站回归，不验证云同步；真实隔离Supabase/电脑/iPhone验收步骤见 sync-api-operations.md。
+
+专项审核结果与限制见 [security-audit.md](security-audit.md)。分别执行 `bash supabase/tests/run-local.sh 15` 和 `bash supabase/tests/run-local.sh 16`；已修复PG15 ADMIN断言误报与临时服务器就绪竞态。新增全函数与全表权限断言，快照先读后写、增量等待写入和并发首次bootstrap测试。初次PG15断言失败和一次容器连接失败均如实记录在专项报告；最终完整重跑通过。

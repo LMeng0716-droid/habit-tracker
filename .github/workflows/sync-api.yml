@@ -12,9 +12,12 @@ permissions:
   contents: read
 jobs:
   database:
+    strategy:
+      matrix:
+        postgres: [15, 16]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - name: 隔离 PostgreSQL 权限、事务与并发测试
-        run: bash supabase/tests/run-local.sh
+        run: bash supabase/tests/run-local.sh ${{ matrix.postgres }}

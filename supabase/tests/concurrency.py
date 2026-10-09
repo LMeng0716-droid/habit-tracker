@@ -6,6 +6,13 @@ import subprocess
 import sys
 
 container = sys.argv[1]
+# Refuse accidental use against an existing/unlabelled database container.
+label = subprocess.run(
+    ["docker", "inspect", "--format", '{{ index .Config.Labels "habit-tracker.disposable-audit" }}', container],
+    text=True, capture_output=True, check=True,
+).stdout.strip()
+if label != "true":
+    raise SystemExit("Refusing non-disposable database container")
 uid = "00000000-0000-0000-0000-000000000003"
 
 
@@ -26,6 +33,7 @@ def operation(n, version, name):
 
 
 def overlap(write_sql, follower_sql):
+    global writer_output
     writer = subprocess.Popen(
         ["docker", "exec", "-i", container, "psql", "-U", "postgres", "-X", "-qAt", "-v", "ON_ERROR_STOP=1"],
         stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
@@ -41,6 +49,7 @@ def overlap(write_sql, follower_sql):
                 break
             if not line:
                 raise AssertionError("writer failed before lock marker: " + writer.stderr.read())
+        writer_output = lines
         follower = psql(auth(follower_sql), check=False)
         writer.wait(timeout=15)
         assert writer.returncode == 0, writer.stderr.read()
@@ -77,3 +86,29 @@ snapshot = json.loads(follower.stdout.strip().splitlines()[-1])
 assert snapshot["cursor"] == "14" and snapshot["habits"][0]["version"] == "4"
 assert snapshot["habits"][0]["name"] == "snapshot-consistent"
 print("PASS 3 overlapping-session scenarios: CAS winner, idempotent retry, snapshot consistency")
+
+# Reader holds SHARE until commit; following writer cannot contaminate its snapshot.
+follower = overlap("SELECT habit_api.full_snapshot();", operation(7, 4, "after-reader"))
+assert follower.returncode == 0, follower.stderr
+reader_snapshot = json.loads(writer_output[-2])
+assert reader_snapshot["cursor"] == "14" and reader_snapshot["habits"][0]["version"] == "4"
+snapshot = json.loads(psql(auth("SELECT habit_api.full_snapshot();")).stdout.strip().splitlines()[-1])
+assert snapshot["cursor"] == "15" and snapshot["habits"][0]["version"] == "5"
+
+# Delta read behind writer: watermark and after-image include the same commit.
+follower = overlap(operation(8, 5, "delta-consistent"), "SELECT habit_api.pull_changes('15',null,1);")
+assert follower.returncode == 0, follower.stderr
+page = json.loads(follower.stdout.strip().splitlines()[-1])
+assert page["high_water"] == page["next_cursor"] == "16"
+assert not page["has_more"] and len(page["events"]) == 1
+assert page["events"][0]["payload"]["name"] == "delta-consistent"
+
+# Same first-bootstrap retry must serialize even before a head row exists.
+uid = "00000000-0000-0000-0000-000000000004"
+psql(f"INSERT INTO auth.users(id) VALUES ('{uid}');")
+bootstrap = "SELECT habit_api.bootstrap_user('00000000-0000-0000-0004-000000000001','UTC');"
+follower = overlap(bootstrap, bootstrap)
+assert follower.returncode == 0, follower.stderr
+snapshot = json.loads(psql(auth("SELECT habit_api.full_snapshot();")).stdout.strip().splitlines()[-1])
+assert snapshot["cursor"] == "8" and len(snapshot["categories"]) == 6
+print("PASS 3 additional overlapping-session scenarios: reader first, delta consistency, first bootstrap retry")

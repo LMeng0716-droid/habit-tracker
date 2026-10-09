@@ -18,3 +18,5 @@
 - [执行顺序、控制台权限、回滚恢复](sync-api-operations.md)
 - [测试覆盖与验证边界](sync-api-validation.md)
 - [新增API migration](../../supabase/migrations/202610090002_sync_api.sql)
+
+- [数据库安全专项审核、PG15/16验证与人工步骤](security-audit.md)

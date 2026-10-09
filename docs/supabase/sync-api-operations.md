@@ -2,6 +2,8 @@
 
 本次没有连接真实Supabase，以下必须由用户在隔离测试项目先审核执行。不能把本地测试通过视为生产项目已配置完成。
 
+先阅读 [专项审核](security-audit.md)，在独立项目运行只读 `supabase/checks/migration-preflight.sql`。PG15 的 CREATEROLE 与 PG16 自动 ADMIN 行为不同；本地已分别执行验证，但平台能力仍需实测。
+
 ## 执行前检查
 
 1. 备份测试/生产数据库并保留已有迁移记录；先在隔离项目验证，再另外授权生产动作。所有迁移一次性执行；已有schema/role/function同名会失败并回滚，禁止通过DROP现有数据来“修好”。
