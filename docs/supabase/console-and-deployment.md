@@ -1,5 +1,7 @@
 # 控制台配置和 GitHub Pages 部署
 
+> 本文保留第一阶段设计记录；第二阶段已实现的 RPC、执行顺序与验证结果见 [同步 API](sync-api.md) 和 [操作手册](sync-api-operations.md)。
+
 以下由用户在**隔离测试 Supabase 项目**先操作并验证，再审核决定生产动作。本任务不执行这些配置。Dashboard界面标签可能随版本变化，请按设置项含义查找。
 
 1. 确认 Email provider、邮箱验证（Confirm email）开启状态；用户只说明“Email登录”已配置，不能推断验证、密码策略、SMTP均已就绪。核对密码强度、邮件发送限额、验证码/链接有效期，生产发送配置自有SMTP及发信域名；SMTP密钥只留Supabase设置。注册和重置邮件各发一封实际验证。

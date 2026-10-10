@@ -1,6 +1,6 @@
 # Supabase 与多设备同步设计（待人工审核）
 
-本次只交付设计和基础 SQL；未连接 Supabase，未更改生产数据库、应用运行逻辑或 Pages 工作流。基础 SQL **不提供可用的同步写入 API**：需要完成后续原子 RPC 与验收后才接入前端。
+第一阶段交付设计与只读基础 SQL；第二阶段新增安全写/读 RPC，仍未连接真实 Supabase、修改应用运行逻辑或 Pages 工作流。基础迁移单独执行时没有写 API，需按顺序执行经审核的第二份迁移，再在隔离项目验收。
 
 - [main 代码审查](code-review.md)
 - [ER、字段、权限与数据库约束](database.md)
@@ -11,3 +11,12 @@
 - [隔离数据库 RLS 测试脚本](../../supabase/tests/rls_foundation.sql)
 
 所有云功能默认关闭，保留本地模式。只有用户主动登录、预览并确认迁移后，才允许上传对应账号的数据。注册成功不代表已完成云迁移。
+
+## 第二阶段：数据库 API
+
+- [RPC参数、错误、幂等与分页合同](sync-api.md)
+- [执行顺序、控制台权限、回滚恢复](sync-api-operations.md)
+- [测试覆盖与验证边界](sync-api-validation.md)
+- [新增API migration](../../supabase/migrations/202610090002_sync_api.sql)
+
+- [数据库安全专项审核、PG15/16验证与人工步骤](security-audit.md)
