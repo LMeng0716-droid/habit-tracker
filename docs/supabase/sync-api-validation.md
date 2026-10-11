@@ -42,3 +42,11 @@
 新增sync-api.yml让push/PR中的数据库变更执行相同隔离测试，没有生产连接或部署步骤。GitHub Actions远端结果尚未观测，不能称CI已经通过。浏览器套件只验证现有本地网站回归，不验证云同步；真实隔离Supabase/电脑/iPhone验收步骤见 sync-api-operations.md。
 
 专项审核结果与限制见 [security-audit.md](security-audit.md)。分别执行 `bash supabase/tests/run-local.sh 15` 和 `bash supabase/tests/run-local.sh 16`；已修复PG15 ADMIN断言误报与临时服务器就绪竞态。新增全函数与全表权限断言，快照先读后写、增量等待写入和并发首次bootstrap测试。初次PG15断言失败和一次容器连接失败均如实记录在专项报告；最终完整重跑通过。
+
+## 2026-10-11 托管权限兼容性复核
+
+- 本地 PostgreSQL 15.19、16.15、17.11，分别执行 direct 和 managed 配置；managed 配置的管理员 Auth 两项 GRANT OPTION=false。两份迁移、RLS/RPC/事务断言及每配置六组并发测试通过（六配置共36组并发）。版本号来源测试镜像输出，并非远程数据库查询。
+- managed 配置复现旧版 Auth GRANT 后 RPC 不可用；修正版验证异常角色图、缺失 Auth USAGE、PG16/17 缺失 authenticated ADMIN 的事务回滚，随后完整安装通过。
+- 本轮现有单元测试41/41、type-check、format:check、生产 build、bash语法及git diff检查通过。浏览器测试本轮没有重跑；此前14/14记录只属于2026-10-09。
+- 新预检 SQL 在本地执行；真正 Supabase SQL Editor 角色限制、真实 JWT、Data API、邮件认证及远端CI均尚未验证。用户提供的预检结果是已知事实，不能据此声称修正版在真实项目已执行成功。
+- 最新人工步骤和历史migration修改限制见 [managed-compatibility.md](managed-compatibility.md)。

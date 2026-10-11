@@ -163,6 +163,14 @@ select pg_temp.assert(current_setting('server_version_num')::integer < 160000 or
 select pg_temp.assert(not has_schema_privilege('habit_rpc_owner','habit_api','CREATE') and not has_schema_privilege('habit_rpc_owner','habit_private','CREATE'),'temporary schema CREATE revoked');
 select pg_temp.assert(not has_function_privilege('anon','habit_api.apply_operations(jsonb)','EXECUTE'),'anon execute revoked');
 select pg_temp.assert(not has_function_privilege('authenticated','habit_private.schedule(jsonb)','EXECUTE'),'private helper execute revoked');
+-- Auth access without granting any new client capability.
+select pg_temp.assert(has_schema_privilege('habit_rpc_owner','auth','USAGE')
+  and has_function_privilege('habit_rpc_owner','auth.uid()','EXECUTE'),'API owner can evaluate auth.uid');
+select pg_temp.assert(not exists(select 1 from pg_auth_members where
+  roleid='authenticated'::regrole and member='habit_rpc_owner'::regrole and admin_option),
+  'API owner cannot manage authenticated membership');
+select pg_temp.assert(not exists(select 1 from pg_roles where rolname='habit_rpc_owner' and rolcreaterole),
+  'API owner cannot create or manage roles');
 -- Audit every function, not just the primary write RPC.
 select pg_temp.assert(not exists(
   select 1 from pg_proc p join pg_namespace n on n.oid=p.pronamespace

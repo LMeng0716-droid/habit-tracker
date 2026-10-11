@@ -6,7 +6,7 @@
 
 四个公开RPC：`bootstrap_user`、`apply_operations`、`full_snapshot`、`pull_changes`。仅 authenticated EXECUTE；每个入口直接或通过 apply_operations 检查 auth.uid()。不接收 user_id；任意未知字段（包括owner/version/服务端时间/任意SQL）拒绝。公开发布key不能绕过JWT和RLS。
 
-SECURITY DEFINER所有者为独立 `habit_rpc_owner`：NOLOGIN、NOSUPERUSER、NOBYPASSRLS、NOINHERIT，不是表所有者，不授予客户端成员身份；函数 search_path固定为空，表、函数业务对象全限定。只对11张既有表授予SELECT/INSERT/UPDATE，无DELETE、无持久schema CREATE。专用所有者RLS仍要求 auth.uid()=user_id；helpers/trigger函数的PUBLIC/anon/authenticated EXECUTE显式撤销。迁移管理员保留专用角色的ADMIN成员资格，以便未来修复/撤销函数权限（PG16角色管理需要ADMIN OPTION）；这只给执行迁移的可信管理员，不给authenticated/anon。目标角色schema CREATE只在转移所有权期间临时授予，提交前撤销。
+SECURITY DEFINER所有者为独立 `habit_rpc_owner`：NOLOGIN、NOSUPERUSER、NOBYPASSRLS；直接 Auth 授权路径为 NOINHERIT，托管环境备选路径为 INHERIT 并仅继承 authenticated（见 [兼容性审核](managed-compatibility.md)），不是表所有者，不授予客户端成员身份；函数 search_path固定为空，表、函数业务对象全限定。只对11张既有表授予SELECT/INSERT/UPDATE，无DELETE、无持久schema CREATE。专用所有者RLS仍要求 auth.uid()=user_id；helpers/trigger函数的PUBLIC/anon/authenticated EXECUTE显式撤销。迁移管理员保留专用角色的ADMIN成员资格，以便未来修复/撤销函数权限（PG16角色管理需要ADMIN OPTION）；这只给执行迁移的可信管理员，不给authenticated/anon。目标角色schema CREATE只在转移所有权期间临时授予，提交前撤销。
 
 写请求先按用户获取事务advisory lock（覆盖首次初始化尚无sync_head的情形），再锁sync_head FOR UPDATE。所有实体操作、版本时间trigger、事件追加和receipt写入同事务。批次任意错误使整个批次回滚，不会消耗operation ID；不返回伪成功。事件按每用户last_sequence递增，没有序列号提前分配后晚提交的问题。
 

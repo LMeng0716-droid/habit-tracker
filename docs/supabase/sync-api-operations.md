@@ -2,12 +2,12 @@
 
 本次没有连接真实Supabase，以下必须由用户在隔离测试项目先审核执行。不能把本地测试通过视为生产项目已配置完成。
 
-先阅读 [专项审核](security-audit.md)，在独立项目运行只读 `supabase/checks/migration-preflight.sql`。PG15 的 CREATEROLE 与 PG16 自动 ADMIN 行为不同；本地已分别执行验证，但平台能力仍需实测。
+先阅读 [托管环境兼容性审核](managed-compatibility.md) 和 [先前专项审核](security-audit.md)，在独立项目运行只读 `supabase/checks/migration-preflight.sql`。PG15 的 CREATEROLE 与 PG16 自动 ADMIN 行为不同；本地已分别执行验证，但平台能力仍需实测。
 
 ## 执行前检查
 
 1. 备份测试/生产数据库并保留已有迁移记录；先在隔离项目验证，再另外授权生产动作。所有迁移一次性执行；已有schema/role/function同名会失败并回滚，禁止通过DROP现有数据来“修好”。
-2. 确认PG15+、Supabase auth.users/auth.uid存在、anon/authenticated是预期角色。迁移管理员应拥有基础表/schema，并有CREATEROLE与必要auth.uid EXECUTE/schema USAGE的GRANT OPTION。若平台不允许创建/转移独立角色，停止并联系管理员，不改成service_role、表owner或BYPASSRLS来绕过。
+2. 确认PG15+、Supabase auth.users/auth.uid存在、anon/authenticated是预期角色。迁移管理员应拥有基础表/schema，并有CREATEROLE。Auth 权限可通过直接 GRANT OPTION 路径，或通过受限继承 authenticated 路径取得；PG16+ 的后者需要管理员具有 authenticated 的 ADMIN OPTION。不能仅凭 CREATEROLE 推定全部操作可用。若平台不允许创建/转移独立角色，停止并联系管理员，不改成service_role、表owner或BYPASSRLS来绕过。
 3. 本地已用NOSUPERUSER/NOBYPASSRLS的 managed_migration_admin执行两份迁移，写函数则在不同NOLOGIN/NOBYPASSRLS角色下运行，覆盖权限误设风险；仍需在真实隔离Supabase确认平台角色限制和PostgREST映射。
 
 ## SQL顺序

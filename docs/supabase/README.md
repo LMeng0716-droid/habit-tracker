@@ -20,3 +20,5 @@
 - [新增API migration](../../supabase/migrations/202610090002_sync_api.sql)
 
 - [数据库安全专项审核、PG15/16验证与人工步骤](security-audit.md)
+
+- [2026-10-11 托管 PostgreSQL 17 Auth 权限兼容性与执行步骤](managed-compatibility.md)

@@ -10,8 +10,33 @@ grant habit_rpc_owner to current_user;
 -- Temporary CREATE is needed for ALTER FUNCTION OWNER on non-superuser
 -- migration administrators; revoked before this transaction commits.
 grant create on schema habit_api, habit_private to habit_rpc_owner;
-grant usage on schema auth, habit_api, habit_private to habit_rpc_owner;
-grant execute on function auth.uid() to habit_rpc_owner;
+grant usage on schema habit_api, habit_private to habit_rpc_owner;
+-- Unapplied-install compatibility fix: managed postgres may use Auth but have
+-- no GRANT OPTION on Supabase-owned objects. Never ignore failed Auth grants.
+do $$ begin
+  if has_schema_privilege(current_user,'auth','USAGE WITH GRANT OPTION')
+    and has_function_privilege(current_user,'auth.uid()','EXECUTE WITH GRANT OPTION') then
+    grant usage on schema auth to habit_rpc_owner;
+    grant execute on function auth.uid() to habit_rpc_owner;
+  else
+    -- One-way membership: API owner inherits existing authenticated access;
+    -- authenticated NEVER inherits API owner. No ADMIN OPTION is granted.
+    -- Refuse unexpected privileged role graphs instead of silently inheriting.
+    if exists(select 1 from pg_roles where rolname='authenticated' and
+      (rolsuper or rolbypassrls or rolcreaterole or rolcreatedb or rolcanlogin))
+      or exists(select 1 from pg_auth_members where member='authenticated'::regrole)
+      or has_schema_privilege('authenticated','habit_api','CREATE')
+      or has_schema_privilege('authenticated','habit_private','USAGE') then
+      raise exception using errcode='42501',message='unsafe_authenticated_role_graph';
+    end if;
+    alter role habit_rpc_owner inherit;
+    grant authenticated to habit_rpc_owner;
+  end if;
+  if not has_schema_privilege('habit_rpc_owner','auth','USAGE')
+    or not has_function_privilege('habit_rpc_owner','auth.uid()','EXECUTE') then
+    raise exception using errcode='42501',message='rpc_owner_auth_access_required';
+  end if;
+end $$;
 grant select,insert,update on habit_api.user_profiles,habit_api.categories,habit_api.habits,
   habit_api.schedule_versions,habit_api.completions,habit_api.daily_notes,habit_api.habit_orders,
   habit_api.import_batches,habit_private.sync_heads,habit_private.change_events,habit_private.operation_receipts to habit_rpc_owner;
