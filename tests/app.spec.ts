@@ -1,468 +1,374 @@
 import { test, expect, type Page } from "@playwright/test";
-import { readFile } from "node:fs/promises";
-const key = "daily-progress:v2";
-const today = "2026-10-09";
-const fixture = {
-  schemaVersion: 1,
-  revision: "fixture",
-  habits: [
-    {
-      id: "reading",
-      name: "阅读10分钟",
-      color: 0,
-      createdDate: "2026-09-28",
-      createdAt: 1,
+import type { Snapshot } from "../src/domain";
+// Browser API fixtures exercise the real SDK, not real Supabase JWT verification.
+const uid = "00000000-0000-0000-0000-000000000001";
+const now = new Date("2026-10-11T03:00:00Z");
+const today = "2026-10-11";
+function fixture(): Snapshot {
+  return {
+    today,
+    habits: [
+      {
+        id: "reading",
+        name: "阅读",
+        color: 0,
+        created_date: "2026-10-01",
+        archived_on: null,
+      },
+    ],
+    checkins: [
+      { habit_id: "reading", date: "2026-10-09" },
+      { habit_id: "reading", date: "2026-10-10" },
+    ],
+  };
+}
+async function backend(page: Page, snapshot = fixture()) {
+  await page.clock.install({ time: now });
+  const user = {
+    id: uid,
+    aud: "authenticated",
+    role: "authenticated",
+    email: "owner@example.test",
+    app_metadata: { provider: "email", providers: ["email"] },
+    user_metadata: {},
+    created_at: now.toISOString(),
+  };
+  const encode = (data: unknown) =>
+    Buffer.from(JSON.stringify(data)).toString("base64url");
+  const tokenFor = (id: string) =>
+    `${encode({ alg: "HS256", typ: "JWT" })}.${encode({ sub: id, aud: "authenticated", exp: Math.floor(now.getTime() / 1000) + 3600 })}.fixture-signature`;
+  const token = tokenFor(uid);
+  let release: (() => void) | null = null;
+  let holdNext = false;
+  let failRead = false,
+    failWrite = false,
+    reads = 0,
+    writes = 0;
+  await page.route("https://habit-browser.invalid/**", async (route) => {
+    const request = route.request();
+    const path = new URL(request.url()).pathname;
+    const respond = (body: unknown, status = 200) =>
+      route.fulfill({
+        status,
+        contentType: "application/json",
+        headers: { "access-control-allow-origin": "*" },
+        body: JSON.stringify(body),
+      });
+    if (path === "/auth/v1/token") {
+      const args = request.postDataJSON() as {
+        password: string;
+        email: string;
+      };
+      if (args.password === "wrongpass")
+        return respond(
+          {
+            error: "invalid_grant",
+            error_description: "Invalid login credentials",
+          },
+          400,
+        );
+      return respond({
+        access_token: tokenFor(
+          args.email === "other@example.test"
+            ? "00000000-0000-0000-0000-000000000002"
+            : uid,
+        ),
+        token_type: "bearer",
+        expires_in: 3600,
+        refresh_token: "fixture-refresh-token",
+        user: {
+          ...user,
+          id:
+            args.email === "other@example.test"
+              ? "00000000-0000-0000-0000-000000000002"
+              : uid,
+          email: args.email,
+        },
+      });
+    }
+    if (path === "/auth/v1/user") return respond({ user, ...user });
+    if (path === "/auth/v1/signup") return respond({ user, session: null });
+    if (path === "/auth/v1/recover") return respond({});
+    if (path === "/auth/v1/logout") return route.fulfill({ status: 204 });
+    if (path === "/rest/v1/rpc/read_snapshot") {
+      reads++;
+      expect(request.headers()["content-profile"]).toBe("habit_mobile");
+      if (failRead)
+        return respond({ message: "fixture read failure", code: "XX000" }, 500);
+      const subject = JSON.parse(
+        Buffer.from(
+          request.headers().authorization.split(".")[1],
+          "base64url",
+        ).toString(),
+      ).sub;
+      const response = structuredClone(
+        subject === uid ? snapshot : { today, habits: [], checkins: [] },
+      );
+      if (holdNext) {
+        holdNext = false;
+        await new Promise<void>((resolve) => {
+          release = resolve;
+        });
+      }
+      return respond(response);
+    }
+    if (path.startsWith("/rest/v1/rpc/")) {
+      writes++;
+      if (failWrite)
+        return respond(
+          { message: "fixture write failure", code: "XX000" },
+          500,
+        );
+      const args = request.postDataJSON() as Record<
+        string,
+        string | number | boolean
+      >;
+      const rpc = path.split("/").at(-1);
+      if (
+        rpc === "create_habit" &&
+        !snapshot.habits.some((h) => h.id === args.p_id)
+      )
+        snapshot.habits.push({
+          id: String(args.p_id),
+          name: String(args.p_name),
+          color: Number(args.p_color),
+          created_date: today,
+          archived_on: null,
+        });
+      if (rpc === "edit_habit") {
+        const habit = snapshot.habits.find((h) => h.id === args.p_id)!;
+        habit.name = String(args.p_name);
+        habit.color = Number(args.p_color);
+      }
+      if (rpc === "archive_habit")
+        snapshot.habits.find((h) => h.id === args.p_id)!.archived_on = today;
+      if (rpc === "set_checkin") {
+        snapshot.checkins = snapshot.checkins.filter(
+          (c) => !(c.habit_id === args.p_habit_id && c.date === args.p_date),
+        );
+        if (args.p_completed)
+          snapshot.checkins.push({
+            habit_id: String(args.p_habit_id),
+            date: String(args.p_date),
+          });
+      }
+      return respond(null);
+    }
+    throw new Error(`Unhandled fixture endpoint ${path}`);
+  });
+  return {
+    snapshot,
+    token,
+    holdRead: () => {
+      holdNext = true;
     },
-  ],
-  completionRecords: [
-    "2026-09-28",
-    "2026-09-29",
-    "2026-09-30",
-    "2026-10-01",
-    "2026-10-07",
-    "2026-10-08",
-  ].map((date) => ({ habitId: "reading", date })),
-};
-const file = (content: unknown) => ({
-  name: "backup.json",
-  mimeType: "application/json",
-  buffer: Buffer.from(JSON.stringify(content)),
+    releaseRead: () => {
+      release?.();
+    },
+    failRead: (value: boolean) => {
+      failRead = value;
+    },
+    failWrite: (value: boolean) => {
+      failWrite = value;
+    },
+    reads: () => reads,
+    writes: () => writes,
+  };
+}
+async function login(page: Page, password = "password123") {
+  await page.getByLabel("邮箱", { exact: true }).fill("owner@example.test");
+  await page.getByLabel("密码", { exact: true }).fill(password);
+  await page.getByRole("button", { name: "登录", exact: true }).click();
+}
+test.use({
+  viewport: { width: 390, height: 844 },
+  isMobile: true,
+  hasTouch: true,
 });
-async function start(page: Page) {
-  await page.clock.install({ time: new Date("2026-10-09T10:00:00+08:00") });
-  await page.goto("/");
-}
-async function add(page: Page, name = "阅读10分钟") {
-  await page.getByRole("button", { name: "＋ 添加习惯" }).click();
-  await page.getByRole("textbox", { name: "习惯名称" }).fill(name);
-  await page.getByRole("button", { name: "保存习惯" }).click();
-  await expect(page.getByRole("dialog")).toHaveCount(0);
-}
-async function seed(page: Page) {
-  await page.evaluate(
-    ({ key, fixture }) => localStorage.setItem(key, JSON.stringify(fixture)),
-    { key, fixture },
-  );
-  await page.reload();
-}
-test("主流程：新建、编辑、打卡、刷新、撤销、备份清空恢复", async ({ page }) => {
-  await start(page);
-  await add(page);
-  await page.getByRole("button", { name: "编辑阅读10分钟" }).click();
-  await page.getByRole("textbox", { name: "习惯名称" }).fill("阅读15分钟");
-  await page.getByRole("button", { name: "保存习惯" }).click();
-  await page.getByRole("button", { name: "＋ 今日打卡" }).click();
+test("login, daily checkin/cancel and clear-browser recovery from cloud", async ({
+  page,
+}) => {
+  const api = await backend(page);
+  await page.goto("/habit-tracker/");
+  await login(page);
+  await expect(
+    page.getByRole("heading", { name: "阅读", exact: true }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "打卡", exact: true }).click();
+  await expect(
+    page.getByRole("button", { name: "取消打卡", exact: true }),
+  ).toBeVisible();
   await page.reload();
   await expect(
-    page.getByRole("button", { name: "✓ 已完成 · 撤销打卡" }),
+    page.getByRole("button", { name: "取消打卡", exact: true }),
   ).toBeVisible();
-  await page.getByRole("button", { name: "✓ 已完成 · 撤销打卡" }).click();
-  await page.getByRole("button", { name: "＋ 今日打卡" }).click();
-  await page
-    .getByRole("navigation")
-    .getByRole("link", { name: "设置" })
-    .click();
-  const pending = page.waitForEvent("download");
-  await page.getByRole("button", { name: "导出 JSON 备份" }).click();
-  const download = await pending;
-  const raw = await readFile((await download.path())!, "utf8");
-  expect(JSON.parse(raw).completionRecords).toHaveLength(1);
-  await page.getByRole("button", { name: "清空全部数据", exact: true }).click();
-  await page.getByRole("button", { name: "确认", exact: true }).click();
-  await page.getByLabel("选择JSON备份").setInputFiles({
-    name: "saved.json",
-    mimeType: "application/json",
-    buffer: Buffer.from(raw),
+  await page.getByRole("button", { name: "取消打卡", exact: true }).click();
+  await expect(
+    page.getByRole("button", { name: "打卡", exact: true }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "账号", exact: true }).click();
+  await page.getByRole("button", { name: "退出登录" }).click();
+  await expect(
+    page.getByRole("button", { name: "登录", exact: true }),
+  ).toBeVisible();
+  await page.evaluate(() => localStorage.clear());
+  await page.reload();
+  await login(page);
+  await page.getByRole("button", { name: "查看历史" }).click();
+  await expect(
+    page.getByRole("button", { name: "2026-10-09 已打卡" }),
+  ).toHaveAttribute("aria-pressed", "true");
+  expect(api.snapshot.checkins).toHaveLength(2);
+});
+test("create, edit, historical checkin and archive preserves today's completion", async ({
+  page,
+}) => {
+  await backend(page);
+  await page.goto("/habit-tracker/");
+  await login(page);
+  await page.getByRole("button", { name: "创建习惯", exact: true }).click();
+  await page.getByLabel("名称", { exact: true }).fill("运动");
+  await page.getByRole("button", { name: "保存习惯" }).click();
+  const card = page
+    .locator("article")
+    .filter({ has: page.getByRole("heading", { name: "运动", exact: true }) });
+  await card.getByRole("button", { name: "编辑", exact: true }).click();
+  await page.getByLabel("名称", { exact: true }).fill("运动十分钟");
+  await page.getByRole("button", { name: "保存习惯" }).click();
+  const updated = page.locator("article").filter({
+    has: page.getByRole("heading", { name: "运动十分钟", exact: true }),
   });
-  await expect(page.getByRole("dialog")).toContainText("1 个习惯、1 条记录");
-  await page.getByRole("button", { name: "确认替换并导入" }).click();
-  await page.reload();
-  await page
-    .getByRole("navigation")
-    .getByRole("link", { name: "今天" })
-    .click();
-  await expect(page.getByRole("link", { name: "阅读15分钟" })).toBeVisible();
+  await updated.getByRole("button", { name: "打卡", exact: true }).click();
+  await updated.getByRole("button", { name: "查看历史" }).click();
   await expect(
-    page.getByRole("button", { name: "✓ 已完成 · 撤销打卡" }),
-  ).toBeVisible();
-});
-test("月历补记、跨月连续、统计口径、只读日期和浏览器返回", async ({ page }) => {
-  await start(page);
-  await seed(page);
-  await page.getByRole("link", { name: "阅读10分钟", exact: true }).click();
-  await expect(
-    page.getByText("当前连续", { exact: true }).locator(".."),
-  ).toContainText("2天");
-  await expect(
-    page.getByText("历史最长连续", { exact: true }).locator(".."),
-  ).toContainText("4天");
-  await expect(
-    page.getByRole("button", { name: "2026-10-10 不可操作" }),
-  ).toBeDisabled();
-  await page
-    .getByRole("button", { name: "2026-10-06 未完成", exact: true })
-    .click();
-  expect(
-    await page.evaluate(
-      (key) => JSON.parse(localStorage.getItem(key)!).completionRecords.length,
-      key,
-    ),
-  ).toBe(6);
-  await page.getByRole("button", { name: "确认补记" }).click();
-  await expect(
-    page.getByText("当前连续", { exact: true }).locator(".."),
-  ).toContainText("3天");
-  await page
-    .getByRole("button", { name: "2026-10-07 已完成", exact: true })
-    .click();
-  await page.getByRole("button", { name: "确认撤销" }).click();
-  await expect(
-    page.getByText("当前连续", { exact: true }).locator(".."),
-  ).toContainText("1天");
-  await page.getByLabel("查看月份").fill("2026-09");
-  await expect(
-    page.getByRole("button", { name: "2026-09-27 不可操作" }),
-  ).toBeDisabled();
-  await page.goBack();
-  await expect(
-    page.getByRole("heading", { name: "今天，向前一小步" }),
-  ).toBeVisible();
-  await page
-    .getByRole("navigation")
-    .getByRole("link", { name: "统计" })
-    .click();
-  await page.getByLabel("查看月份").fill("2026-10");
-  await expect(page.getByText("3 / 9 个有效日完成")).toBeVisible();
-  await expect(page.getByText("33%", { exact: true })).toBeVisible();
-});
-test("归档去掉当天记录、保留历史，只读且可永久删除", async ({ page }) => {
-  await start(page);
-  await seed(page);
-  await page.getByRole("button", { name: "＋ 今日打卡" }).click();
-  await page.getByRole("link", { name: "阅读10分钟", exact: true }).click();
-  await page.getByRole("button", { name: "归档", exact: true }).click();
-  await expect(page.getByRole("dialog")).toContainText("当天打卡记录将被移除");
-  await page.getByRole("button", { name: "确认", exact: true }).click();
-  const saved = await page.evaluate(
-    (key) => JSON.parse(localStorage.getItem(key)!),
-    key,
-  );
-  expect(saved.habits[0].archivedDate).toBe(today);
-  expect(saved.completionRecords).toHaveLength(6);
-  await page.getByRole("link", { name: /阅读10分钟/ }).click();
-  await expect(
-    page.getByRole("button", { name: "2026-10-08 已完成" }),
-  ).toBeDisabled();
-  await page.getByRole("button", { name: "永久删除", exact: true }).click();
-  await page.getByRole("button", { name: "取消", exact: true }).click();
-  await expect(page.getByRole("heading", { name: "阅读10分钟" })).toBeVisible();
-  await page.getByRole("button", { name: "永久删除", exact: true }).click();
-  await page.getByRole("button", { name: "确认", exact: true }).click();
-  await expect(page.getByText("从一个小习惯开始")).toBeVisible();
-});
-test("坏备份不修改数据，合法备份取消也不替换", async ({ page }) => {
-  await start(page);
-  await add(page);
-  await page
-    .getByRole("navigation")
-    .getByRole("link", { name: "设置" })
-    .click();
-  const old = await page.evaluate((key) => localStorage.getItem(key), key);
-  await page
-    .getByLabel("选择JSON备份")
-    .setInputFiles(file({ ...fixture, schemaVersion: 2 }));
-  await expect(page.getByRole("status")).toContainText("导入失败");
-  expect(await page.evaluate((key) => localStorage.getItem(key), key)).toBe(
-    old,
-  );
-  await page.getByLabel("选择JSON备份").setInputFiles(file(fixture));
-  await page.getByRole("button", { name: "取消", exact: true }).click();
-  expect(await page.evaluate((key) => localStorage.getItem(key), key)).toBe(
-    old,
-  );
-});
-test("损坏数据保持原文并可通过验证的备份恢复", async ({ page }) => {
-  await start(page);
-  await page.evaluate((key) => localStorage.setItem(key, "broken"), key);
-  await page.reload();
-  await expect(page.getByRole("alert")).toContainText("数据需要恢复");
-  expect(await page.evaluate((key) => localStorage.getItem(key), key)).toBe(
-    "broken",
-  );
-  await expect(
-    page.getByRole("button", { name: "＋ 添加习惯" }),
-  ).toBeDisabled();
-  await page.getByRole("button", { name: "从备份恢复" }).click();
-  await page.getByLabel("选择JSON备份").setInputFiles(file(fixture));
-  await page.getByRole("button", { name: "确认替换并导入" }).click();
-  await expect(page.getByRole("alert")).toHaveCount(0);
-  expect(
-    JSON.parse((await page.evaluate((key) => localStorage.getItem(key), key))!)
-      .habits,
-  ).toHaveLength(1);
-});
-test("写入失败不伪成功、数据仍可导出", async ({ page }) => {
-  await start(page);
-  await add(page);
-  const before = await page.evaluate((key) => localStorage.getItem(key), key);
-  await page.evaluate((key) => {
-    const original = Storage.prototype.setItem;
-    Storage.prototype.setItem = function (k, v) {
-      if (k === key) throw new DOMException("空间不足", "QuotaExceededError");
-      return original.call(this, k, v);
-    };
-  }, key);
-  await page.getByRole("button", { name: "＋ 今日打卡" }).click();
-  await expect(page.getByRole("alert")).toContainText("未保存修改");
-  expect(await page.evaluate((key) => localStorage.getItem(key), key)).toBe(
-    before,
-  );
-  await expect(
-    page.getByRole("button", { name: "＋ 今日打卡" }),
-  ).toBeDisabled();
-  await page
-    .getByRole("navigation")
-    .getByRole("link", { name: "设置" })
-    .click();
-  await expect(
-    page.getByRole("button", { name: "导出 JSON 备份" }),
+    page.getByRole("button", { name: "2026-10-11 已打卡" }),
   ).toBeEnabled();
-});
-test("多窗口存储冲突使旧窗口只读，不覆盖新数据", async ({ page, context }) => {
-  await start(page);
-  await add(page);
-  const other = await context.newPage();
-  await other.goto("/");
-  await other.getByRole("button", { name: "＋ 今日打卡" }).click();
-  await expect(page.getByRole("alert")).toContainText("其他窗口已修改数据");
+  page.once("dialog", (dialog) => dialog.accept());
+  await page.getByRole("button", { name: "归档习惯" }).click();
   await expect(
-    page.getByRole("button", { name: "＋ 今日打卡" }),
-  ).toBeDisabled();
-  await page.reload();
-  await expect(
-    page.getByRole("button", { name: "✓ 已完成 · 撤销打卡" }),
+    page.getByText("已于 2026-10-11 归档，历史记录只读。"),
   ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "2026-10-11 已打卡" }),
+  ).toBeDisabled();
 });
-test("360px手机无溢出，弹窗焦点、退出未保存提示、中文名称校验", async ({
+test("historical dates, denominator and streak", async ({ page }) => {
+  await backend(page);
+  await page.goto("/habit-tracker/");
+  await login(page);
+  await page.getByRole("button", { name: "查看历史" }).click();
+  await expect(page.getByText("当前连续 2 天 · 最长连续 2 天")).toBeVisible();
+  await expect(page.getByText("本月 2/11 天 · 完成率 18%")).toBeVisible();
+  await page.getByRole("button", { name: "2026-10-08 未打卡" }).click();
+  await expect(page.getByText("当前连续 3 天 · 最长连续 3 天")).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "2026-10-12 未打卡" }),
+  ).toBeDisabled();
+});
+test("failed writes retain input and require refreshing before retry", async ({
   page,
 }) => {
-  await page.setViewportSize({ width: 360, height: 780 });
-  await start(page);
-  await page.getByRole("button", { name: "＋ 添加习惯" }).click();
-  const input = page.getByRole("textbox", { name: "习惯名称" });
-  await expect(input).toBeFocused();
+  const api = await backend(page);
+  await page.goto("/habit-tracker/");
+  await login(page);
+  await page.getByRole("button", { name: "创建习惯", exact: true }).click();
+  await page.getByLabel("名称", { exact: true }).fill("失败后重试");
+  api.failWrite(true);
   await page.getByRole("button", { name: "保存习惯" }).click();
-  await expect(page.getByRole("alert")).toContainText("1～30");
-  await input.fill("阅读");
-  page.once("dialog", (dialog) => dialog.dismiss());
-  await page.keyboard.press("Escape");
-  await expect(page.getByRole("dialog")).toBeVisible();
+  await expect(page.getByRole("alert")).toContainText("保存结果可能尚未确认");
+  await expect(page.getByLabel("名称", { exact: true })).toHaveValue(
+    "失败后重试",
+  );
+  await expect(page.getByRole("button", { name: "保存习惯" })).toBeDisabled();
+  api.failWrite(false);
+  await page.getByRole("button", { name: "刷新", exact: true }).click();
   await page.getByRole("button", { name: "保存习惯" }).click();
-  await expect(page.getByRole("button", { name: "＋ 添加习惯" })).toBeFocused();
-  await expect
-    .poll(() =>
-      page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
-    )
-    .toBe(true);
-  await page.screenshot({
-    path: "test-results/mobile-today.png",
-    fullPage: true,
-  });
-  await page.getByRole("link", { name: "阅读", exact: true }).click();
-  await expect
-    .poll(() =>
-      page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
-    )
-    .toBe(true);
-  await page.screenshot({
-    path: "test-results/mobile-calendar.png",
-    fullPage: true,
-  });
-});
-test("本地午夜切换今天，昨天连续仍保留", async ({ page }) => {
-  await start(page);
-  await add(page);
-  await page.getByRole("button", { name: "＋ 今日打卡" }).click();
-  await page.clock.setSystemTime(new Date("2026-10-10T00:00:01+08:00"));
-  await page.clock.runFor(1100);
-  await expect(page.getByRole("button", { name: "＋ 今日打卡" })).toBeVisible();
-  await expect(page.locator(".streak")).toContainText("1 天连续");
-});
-
-test("初始化写入权限不足仍展示已有记录并允许导出", async ({ page }) => {
-  await start(page);
-  await seed(page);
-  await page.addInitScript(() => {
-    Storage.prototype.setItem = function () {
-      throw new DOMException("存储不可写", "SecurityError");
-    };
-  });
-  await page.reload();
-  await expect(page.getByRole("alert")).toContainText("数据仍可查看或导出");
   await expect(
-    page.getByRole("link", { name: "阅读10分钟", exact: true }),
+    page.getByRole("heading", { name: "失败后重试", exact: true }),
   ).toBeVisible();
-  await expect(
-    page.getByRole("button", { name: "＋ 今日打卡" }),
-  ).toBeDisabled();
-  await page
-    .getByRole("navigation")
-    .getByRole("link", { name: "设置" })
-    .click();
-  const pending = page.waitForEvent("download");
-  await page.getByRole("button", { name: "导出 JSON 备份" }).click();
-  const raw = await readFile((await (await pending).path())!, "utf8");
-  expect(JSON.parse(raw).completionRecords).toHaveLength(6);
 });
-
-test("局域网HTTP使用的随机ID不依赖secure-context randomUUID", async ({
+test("failed reads are not empty accounts; no horizontal overflow", async ({
   page,
 }) => {
-  await page.addInitScript(() =>
-    Object.defineProperty(crypto, "randomUUID", { value: undefined }),
-  );
-  await start(page);
-  await add(page);
-  await page.getByRole("button", { name: "＋ 今日打卡" }).click();
+  const api = await backend(page);
+  api.failRead(true);
+  await page.goto("/habit-tracker/");
+  await login(page);
+  await expect(page.getByRole("alert")).toContainText("读取失败");
   await expect(
-    page.getByRole("button", { name: "✓ 已完成 · 撤销打卡" }),
-  ).toBeVisible();
-});
-
-test("v1 迁移保留原文，分类、备注、排序刷新后保留", async ({ page }) => {
-  await page.setViewportSize({ width: 360, height: 780 });
-  await start(page);
-  await page.evaluate(
-    (f) => localStorage.setItem("daily-progress:v1", JSON.stringify(f)),
-    fixture,
-  );
-  await page.reload();
-  const original = await page.evaluate(() =>
-    localStorage.getItem("daily-progress:v1"),
-  );
-  const beforeMigration = page.waitForEvent("download");
-  await page.getByRole("button", { name: "导出升级前原始数据" }).click();
-  expect(await readFile((await (await beforeMigration).path())!, "utf8")).toBe(
-    original,
-  );
-  await page.getByRole("button", { name: "今日备注", exact: true }).click();
-  await page.getByLabel("备注内容").fill("读到第三章");
-  await page.getByRole("button", { name: "保存备注" }).click();
-  await page.getByRole("button", { name: "＋ 今日打卡" }).click();
-  await page.getByRole("button", { name: "✓ 已完成 · 撤销打卡" }).click();
-  await page
-    .getByRole("navigation")
-    .getByRole("link", { name: "设置" })
-    .click();
-  await page.getByRole("button", { name: "创建分类" }).click();
-  await page.getByLabel("分类名称").fill("阅读计划");
-  await page.getByRole("button", { name: "保存分类" }).click();
-  await page
-    .getByRole("navigation")
-    .getByRole("link", { name: "今天" })
-    .click();
-  await page.getByRole("button", { name: "编辑阅读10分钟" }).click();
-  await page
-    .getByLabel("分类", { exact: true })
-    .selectOption({ label: "阅读计划" });
-  await page.getByRole("button", { name: "保存习惯" }).click();
-  await add(page, "散步");
-  await page.getByRole("button", { name: "上移散步" }).click();
-  await page.reload();
-  await expect(page.locator(".habit-card h3").first()).toHaveText("散步");
-  await page.getByLabel("按分类筛选").selectOption({ label: "阅读计划" });
-  await expect(page.locator(".habit-card")).toHaveCount(1);
-  await expect(
-    page.getByRole("button", { name: "上移阅读10分钟" }),
+    page.getByRole("button", { name: "创建习惯", exact: true }),
   ).toHaveCount(0);
-  const saved = await page.evaluate(
-    (k) => JSON.parse(localStorage.getItem(k)!),
-    key,
-  );
-  expect(saved.notes[0].text).toBe("读到第三章");
-  expect(saved.schemaVersion).toBe(2);
-  expect(
-    await page.evaluate(() => localStorage.getItem("daily-progress:v1")),
-  ).toBe(original);
-  await page
-    .getByRole("navigation")
-    .getByRole("link", { name: "设置" })
-    .click();
-  await page.getByRole("button", { name: "删除分类阅读计划" }).click();
-  await page.getByRole("button", { name: "确认", exact: true }).click();
+  api.failRead(false);
+  await page.getByRole("button", { name: "刷新", exact: true }).click();
+  await expect(
+    page.getByRole("heading", { name: "阅读", exact: true }),
+  ).toBeVisible();
   expect(
     await page.evaluate(
-      (k) => JSON.parse(localStorage.getItem(k)!).habits.length,
-      key,
+      () => document.documentElement.scrollWidth <= window.innerWidth,
     ),
-  ).toBe(2);
-  await expect
-    .poll(() =>
-      page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
-    )
-    .toBe(true);
+  ).toBe(true);
 });
-
-test("周期编辑保留历史，指定星期无计划日不可打卡，历史备注独立", async ({
+test("legacy localStorage is ignored; signup and reset email flows", async ({
   page,
 }) => {
-  await start(page);
-  await seed(page);
-  await page.getByRole("button", { name: "编辑阅读10分钟" }).click();
-  await page.getByLabel("重复周期").selectOption("weekdays");
-  await page.getByRole("button", { name: "保存习惯" }).click();
-  const saved = await page.evaluate(
-    (k) => JSON.parse(localStorage.getItem(k)!),
-    key,
+  await backend(page, { today, habits: [], checkins: [] });
+  await page.addInitScript(() =>
+    localStorage.setItem(
+      "daily-progress:v2",
+      JSON.stringify({ habits: [{ name: "旧电脑数据" }] }),
+    ),
   );
-  expect(saved.habits[0].scheduleHistory[1].effectiveDate).toBe("2026-10-12");
-  expect(saved.completionRecords).toHaveLength(6);
-  await page.clock.setSystemTime(new Date("2026-10-13T10:00:00+08:00"));
-  await page.clock.runFor(1100);
-  await expect(
-    page.getByRole("button", { name: "＋ 今日打卡" }),
-  ).toBeDisabled();
-  await expect(page.getByText(/今日未计划/)).toBeVisible();
-  await page.getByRole("link", { name: "阅读10分钟", exact: true }).click();
-  await page.getByLabel("备注日期").fill("2026-10-11");
-  await page.getByLabel("备注内容").fill("今天没有计划，仍可写备注");
-  await page.getByRole("button", { name: "保存备注" }).click();
-  await page.reload();
-  await expect(page.getByText("今天没有计划，仍可写备注")).toBeVisible();
+  await page.goto("/habit-tracker/");
+  await page.getByRole("button", { name: "注册账号", exact: true }).click();
+  await page.getByLabel("邮箱", { exact: true }).fill("owner@example.test");
+  await page.getByLabel("密码", { exact: true }).fill("password123");
+  await page.getByRole("button", { name: "注册", exact: true }).click();
+  await expect(page.getByRole("status")).toContainText("验证邮件");
+  await page.getByRole("button", { name: "忘记密码", exact: true }).click();
+  await page.getByRole("button", { name: "发送重置邮件" }).click();
+  await expect(page.getByRole("status")).toContainText("密码重置邮件");
+  await page.getByRole("button", { name: "返回登录", exact: true }).click();
+  await login(page);
+  await expect(page.getByText("今天还没有进行中的习惯。")).toBeVisible();
+  await expect(page.getByText("旧电脑数据")).toHaveCount(0);
 });
 
-test("桌面拖动排序及每日总结，JSON v2 备份保留新实体", async ({ page }) => {
-  await start(page);
-  await add(page, "阅读");
-  await add(page, "运动");
-  await page
-    .locator(".habit-card")
-    .first()
-    .dragTo(page.locator(".habit-card").nth(1));
-  await expect(page.locator(".habit-card h3").first()).toHaveText("运动");
-  await page.getByRole("button", { name: "编辑当天总结" }).click();
-  await page.getByLabel("备注内容").fill("完成了第一步");
-  await page.getByRole("button", { name: "保存备注" }).click();
-  await page
-    .getByRole("navigation")
-    .getByRole("link", { name: "设置" })
-    .click();
-  const pending = page.waitForEvent("download");
-  await page.getByRole("button", { name: "导出 JSON 备份" }).click();
-  const raw = await readFile((await (await pending).path())!, "utf8");
-  expect(JSON.parse(raw).notes[0].habitId).toBeNull();
-  expect(JSON.parse(raw).categories).toHaveLength(6);
-  await page.getByLabel("选择JSON备份").setInputFiles({
-    name: "v2.json",
-    mimeType: "application/json",
-    buffer: Buffer.from(raw),
-  });
-  await page.getByRole("button", { name: "确认替换并导入" }).click();
-  await page.reload();
-  expect(
-    await page.evaluate(
-      (k) => JSON.parse(localStorage.getItem(k)!).notes[0].text,
-      key,
-    ),
-  ).toBe("完成了第一步");
+test("wrong password stays signed out; another account cannot see old or delayed data", async ({
+  page,
+}) => {
+  const api = await backend(page);
+  await page.goto("/habit-tracker/");
+  await login(page, "wrongpass");
+  await expect(page.getByRole("alert")).toContainText("邮箱或密码不正确");
+  await login(page);
+  await expect(
+    page.getByRole("heading", { name: "阅读", exact: true }),
+  ).toBeVisible();
+  const before = api.reads();
+  api.holdRead();
+  await page.getByRole("button", { name: "刷新", exact: true }).click();
+  await expect.poll(() => api.reads()).toBeGreaterThan(before);
+  await page.getByRole("button", { name: "账号", exact: true }).click();
+  await page.getByRole("button", { name: "退出登录" }).click();
+  await page.getByLabel("邮箱", { exact: true }).fill("other@example.test");
+  await page.getByLabel("密码", { exact: true }).fill("password123");
+  await page.getByRole("button", { name: "登录", exact: true }).click();
+  await expect(page.getByText("今天还没有进行中的习惯。")).toBeVisible();
+  api.releaseRead();
+  await expect(
+    page.getByRole("heading", { name: "阅读", exact: true }),
+  ).toHaveCount(0);
+});
+test("password recovery callback shows new-password form", async ({ page }) => {
+  const api = await backend(page);
+  await page.goto(
+    `/habit-tracker/#access_token=${api.token}&refresh_token=fixture-refresh-token&token_type=bearer&expires_in=3600&type=recovery`,
+  );
+  await expect(page.getByRole("heading", { name: "设置新密码" })).toBeVisible();
+  await page.getByLabel("密码", { exact: true }).fill("updatedpassword123");
+  await page.getByRole("button", { name: "更新密码" }).click();
+  await expect(
+    page.getByRole("heading", { name: "阅读", exact: true }),
+  ).toBeVisible();
 });

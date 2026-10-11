@@ -17,6 +17,7 @@
     "format:check": "prettier --check src tests *.json *.ts index.html"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.117.3",
     "react": "19.3.0",
     "react-dom": "19.3.0"
   },

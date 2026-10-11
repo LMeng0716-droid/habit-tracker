@@ -11,13 +11,10 @@ on:
 permissions:
   contents: read
 jobs:
-  database:
-    strategy:
-      matrix:
-        postgres: [15, 16]
+  mobile-database:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
-      - name: 隔离 PostgreSQL 权限、事务与并发测试
-        run: bash supabase/tests/run-local.sh ${{ matrix.postgres }}
+      - name: 两表云端 RLS、事务和并发测试
+        run: bash supabase/tests/run-mobile.sh
