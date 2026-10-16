@@ -129,7 +129,11 @@ revoke all on all tables in schema habit_mobile from public,anon,authenticated;
 grant select on habit_mobile.habits,habit_mobile.habit_checkins to authenticated;
 grant insert(id,name,color) on habit_mobile.habits to authenticated;
 grant update(name,color,archived_on) on habit_mobile.habits to authenticated;
-grant insert(habit_id,date),delete on habit_mobile.habit_checkins to authenticated;
+-- Keep column INSERT and table DELETE as separate, explicit grants.
+-- user_id/created_date/created_at use defaults or triggers, not client input.
+-- SELECT plus the granted UPDATE columns also permit the RPC FOR UPDATE locks.
+grant insert(habit_id,date) on habit_mobile.habit_checkins to authenticated;
+grant delete on habit_mobile.habit_checkins to authenticated;
 revoke all on all functions in schema habit_mobile from public,anon,authenticated;
 grant execute on function habit_mobile.create_habit(text,text,integer),habit_mobile.edit_habit(text,text,integer),habit_mobile.archive_habit(text),habit_mobile.set_checkin(text,date,boolean),habit_mobile.read_snapshot() to authenticated;
 notify pgrst,'reload schema';

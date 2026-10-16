@@ -12,9 +12,12 @@ permissions:
   contents: read
 jobs:
   mobile-database:
+    strategy:
+      matrix:
+        state: [empty, legacy]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - name: 两表云端 RLS、事务和并发测试
-        run: bash supabase/tests/run-mobile.sh
+        run: bash supabase/tests/run-mobile.sh ${{ matrix.state }}

@@ -81,7 +81,7 @@ print('PASS 4 overlapping sessions: duplicate completion, duplicate cancel, chec
 # Repeated installation refuses existing objects and preserves committed data.
 from pathlib import Path
 migration = (Path(__file__).resolve().parents[1] / 'migrations/202610110001_mobile_cloud.sql').read_text()
-counts = "SELECT json_build_array((SELECT count(*) FROM habit_mobile.habits),(SELECT count(*) FROM habit_mobile.habit_checkins),(SELECT count(*) FROM habit_api.audit_sentinel));"
+counts = "SELECT json_build_array((SELECT count(*) FROM habit_mobile.habits),(SELECT count(*) FROM habit_mobile.habit_checkins),(SELECT count(*) FROM pg_namespace WHERE nspname IN ('habit_api','habit_private')));"
 before = psql(counts).stdout
 retry = psql('SET ROLE managed_migration_admin;\n' + migration, check=False)
 assert retry.returncode != 0 and 'schema "habit_mobile" already exists' in retry.stderr

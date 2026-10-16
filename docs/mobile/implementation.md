@@ -6,6 +6,8 @@
 
 不提供分类、备注、排序、自定义周期、JSON 导入或增量同步。旧数据库设计留存用于审计，不是新产品的安装依赖。旧本地业务代码和相应测试已替换，不能拿旧测试数量作为新产品测试通过数。
 
+最新列授权和空库/回滚专项验证见 [permissions-review.md](permissions-review.md)。
+
 ## 两表及安全
 
 新 schema 为 habit_mobile，与旧 habit_api/habit_private 独立，不删除、迁移或覆盖旧云端对象。两张表 habits 和 habit_checkins；用户由 auth.users 管理。习惯 ID 为客户端生成文本 UUID，已有文本 ID 没有被转换。复合主键和外键限制记录只能归属于同一用户的习惯，打卡自然键 user_id/habit_id/date 唯一。

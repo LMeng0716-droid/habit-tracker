@@ -25,3 +25,7 @@
 尚未验证：habit-tracker-test实际结构、托管角色及Auth函数权限、PostgREST schema暴露/权限映射、真实JWT签名/过期/伪造拒绝、真实Email/SMTP/GoTrue回调、真实跨手机恢复、iPhone Safari触控/安全区域、多年大量历史响应容量、GitHub远端CI。
 
 人工步骤和失败恢复见 [implementation.md](implementation.md)。真实测试项目验证完成前不可称已上线或已在Supabase正常运行。
+
+## 2026-10-16 权限专项复核
+
+最新授权与测试说明见 [permissions-review.md](permissions-review.md)。本轮补充empty/legacy两种本地安装状态、整份迁移晚期/早期异常回滚、明确的列权限断言和跨用户归档拒绝。两种状态安装及各4组并发均通过。INSERT列授权与DELETE授权分开，旧组合语法在PG17实际也可执行，未复现其语法错误。前端未修改，本轮仅重跑7个单元测试、类型检查和构建，未重跑浏览器。

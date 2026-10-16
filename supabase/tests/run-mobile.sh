@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # ONLY a disposable local container. Never accepts a remote database URL.
 set -euo pipefail
+mode="${1:-legacy}"
+case "$mode" in empty|legacy) ;; *) echo 'Expected empty or legacy' >&2; exit 2 ;; esac
 project_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 image='postgres:17@sha256:2d2b8998d31037bf721cfdf764d76ba74171b4fab3431b7f72c27c56ddbdf9e3'
 test_db_password=$(python3 -c 'import secrets; print(secrets.token_hex(24))')
@@ -16,10 +18,15 @@ docker exec -i "$container_id" psql -U postgres -v ON_ERROR_STOP=1 < "$project_d
 docker exec -i "$container_id" psql -U postgres -v ON_ERROR_STOP=1 <<'SQL'
 revoke grant option for usage on schema auth from managed_migration_admin;
 revoke grant option for execute on function auth.uid() from managed_migration_admin;
+SQL
+if [[ "$mode" == legacy ]]; then
+  docker exec -i "$container_id" psql -U postgres -v ON_ERROR_STOP=1 <<'SQL'
 create schema habit_api;
 create table habit_api.audit_sentinel(id integer primary key);
 insert into habit_api.audit_sentinel values(1);
 SQL
+fi
+python3 "$project_dir/supabase/tests/mobile_migration_rollback.py" "$container_id"
 docker exec -i "$container_id" psql -U postgres -v ON_ERROR_STOP=1 < "$project_dir/supabase/checks/mobile-state.sql"
 { printf 'SET ROLE managed_migration_admin;\n'; cat "$project_dir/supabase/migrations/202610110001_mobile_cloud.sql"; } | docker exec -i "$container_id" psql -U postgres -v ON_ERROR_STOP=1
 docker exec -i "$container_id" psql -U postgres -v ON_ERROR_STOP=1 < "$project_dir/supabase/tests/mobile_cloud.sql"
