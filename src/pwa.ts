@@ -15,13 +15,13 @@ export function pwaManifest(base: string) {
     theme_color: "#23634e",
     icons: [
       {
-        src: `${base}icons/icon-192.png`,
+        src: `${base}icons/icon-192.png?v=sprout-2`,
         sizes: "192x192",
         type: "image/png",
         purpose: "any",
       },
       {
-        src: `${base}icons/icon-512.png`,
+        src: `${base}icons/icon-512.png?v=sprout-2`,
         sizes: "512x512",
         type: "image/png",
         purpose: "any maskable",

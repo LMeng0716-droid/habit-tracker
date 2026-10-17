@@ -7,6 +7,7 @@ const config = validatePublicConfig({
   VITE_SUPABASE_URL: import.meta.env.VITE_SUPABASE_URL,
   VITE_SUPABASE_PUBLISHABLE_KEY: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
 });
+export const projectUrl = config.ok ? config.config.url : "";
 export const configIssues = config.ok ? [] : config.issues;
 const storageKey = config.ok
   ? authStorageKey(config.config.url, import.meta.env.BASE_URL)

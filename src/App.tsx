@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { policyKey, readTimes, sessionExpired } from "./session-policy";
 import { PASSWORD_POLICY, passwordRules, passwordValid } from "./password";
 import { InstallHelp } from "./InstallHelp";
 import type { Session } from "@supabase/supabase-js";
 import {
   authRedirect,
+  projectUrl,
   cloud,
   configIssues,
   message,
@@ -32,6 +34,9 @@ export default function App() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [email, setEmail] = useState("");
+  const interactiveLogin = useRef(false);
+  const expirationRunning = useRef(false);
+  const [showPassword, setShowPassword] = useState(false);
   const [password, setPassword] = useState("");
   const [mode, setMode] = useState<"login" | "signup" | "reset">("login");
   const [recovery, setRecovery] = useState(false);
@@ -48,7 +53,39 @@ export default function App() {
     if (!cloud) return;
     let alive = true;
     let authEvents = 0;
-    const accept = (next: Session | null) => {
+    const accept = (next: Session | null, interactive = false) => {
+      if (!alive) return;
+      if (next) {
+        const key = policyKey(
+          import.meta.env.BASE_URL,
+          projectUrl,
+          next.user.id,
+        );
+        const now = Date.now();
+        try {
+          if (interactive) {
+            localStorage.setItem(
+              key,
+              JSON.stringify({ loginAt: now, lastActiveAt: now, seenAt: now }),
+            );
+            expirationRunning.current = false;
+          } else if (sessionExpired(readTimes(localStorage, key), now)) {
+            next = null;
+            if (!expirationRunning.current) {
+              expirationRunning.current = true;
+              // Never await another Auth method inside its state-change callback.
+              window.setTimeout(() => {
+                if (alive && expirationRunning.current)
+                  void cloud?.auth.signOut({ scope: "local" });
+              }, 0);
+            }
+          }
+        } catch {
+          next = null;
+          setError("无法保存登录状态，请允许本站存储后重新登录。");
+        }
+      }
+
       if (!alive) return;
       if (account.current !== (next?.user.id ?? null)) {
         account.current = next?.user.id ?? null;
@@ -64,6 +101,8 @@ export default function App() {
         setBusy(false);
         running.current = false;
       }
+      if (expirationRunning.current)
+        setNotice("为了保护你的账号安全，请重新登录。");
       setSession(next);
       setAuthReady(true);
     };
@@ -73,7 +112,11 @@ export default function App() {
       authEvents++;
       if (event === "PASSWORD_RECOVERY") setRecovery(true);
       if (event === "SIGNED_OUT") setRecovery(false);
-      accept(next);
+      accept(
+        next,
+        event === "PASSWORD_RECOVERY" ||
+          (event === "SIGNED_IN" && interactiveLogin.current),
+      );
     });
     const generation = authEvents;
     void cloud.auth
@@ -95,9 +138,65 @@ export default function App() {
     };
   }, []);
 
+  const ensureSession = useCallback((activity = false) => {
+    const owner = account.current;
+    if (!owner) return false;
+    const key = policyKey(import.meta.env.BASE_URL, projectUrl, owner);
+    const now = Date.now();
+    try {
+      const value = readTimes(localStorage, key);
+      if (!sessionExpired(value, now) && value) {
+        localStorage.setItem(
+          key,
+          JSON.stringify({
+            ...value,
+            seenAt: Math.max(value.seenAt, now),
+            lastActiveAt: activity
+              ? Math.max(value.lastActiveAt, now)
+              : value.lastActiveAt,
+          }),
+        );
+        return true;
+      }
+    } catch {
+      /* Fail closed if browser storage becomes unavailable. */
+    }
+    expirationRunning.current = true;
+    account.current = null;
+    accountEpoch.current++;
+    readGeneration.current++;
+    setSession(null);
+    setSnapshot(null);
+    setFresh(false);
+    setForm(null);
+    setNotice("为了保护你的账号安全，请重新登录。");
+    void cloud?.auth.signOut({ scope: "local" });
+    return false;
+  }, []);
+  useEffect(() => {
+    const action = (event: Event) => {
+      if (event.isTrusted) ensureSession(true);
+    };
+    const resume = () => {
+      if (document.visibilityState === "visible") ensureSession();
+    };
+    document.addEventListener("click", action, true);
+    document.addEventListener("keydown", action, true);
+    document.addEventListener("visibilitychange", resume);
+    window.addEventListener("pageshow", resume);
+    const timer = window.setInterval(resume, 30000);
+    return () => {
+      document.removeEventListener("click", action, true);
+      document.removeEventListener("keydown", action, true);
+      document.removeEventListener("visibilitychange", resume);
+      window.removeEventListener("pageshow", resume);
+      clearInterval(timer);
+    };
+  }, [ensureSession]);
+
   const refresh = useCallback(async () => {
     const uid = account.current;
-    if (!uid) return false;
+    if (!uid || !ensureSession()) return false;
     const generation = ++readGeneration.current;
     setLoading(true);
     setFresh(false);
@@ -117,7 +216,7 @@ export default function App() {
       if (account.current === uid && generation === readGeneration.current)
         setLoading(false);
     }
-  }, []);
+  }, [ensureSession]);
   const uid = session?.user.id;
   useEffect(() => {
     if (uid) void refresh();
@@ -155,7 +254,8 @@ export default function App() {
     rpc: string,
     args: Record<string, string | number | boolean>,
   ) {
-    if (running.current || !fresh || !account.current) return false;
+    if (running.current || !fresh || !account.current || !ensureSession())
+      return false;
     const owner = account.current;
     const epoch = accountEpoch.current;
     running.current = true;
@@ -199,6 +299,7 @@ export default function App() {
     setBusy(true);
     setError("");
     setNotice("");
+    interactiveLogin.current = mode === "login" || mode === "signup";
     try {
       if (recovery) {
         const { error: e } = await cloud.auth.updateUser({ password });
@@ -230,6 +331,7 @@ export default function App() {
     } catch (e) {
       setError(message(e));
     } finally {
+      interactiveLogin.current = false;
       running.current = false;
       setBusy(false);
     }
@@ -315,7 +417,7 @@ export default function App() {
             <label>
               密码
               <input
-                type="password"
+                type={showPassword ? "text" : "password"}
                 minLength={recovery || mode === "signup" ? 12 : undefined}
                 aria-describedby={
                   recovery || mode === "signup" ? "password-policy" : undefined
@@ -336,6 +438,16 @@ export default function App() {
               />
             </label>
           )}
+          {(recovery || mode !== "reset") && (
+            <button
+              type="button"
+              className="secondary"
+              aria-pressed={showPassword}
+              onClick={() => setShowPassword(!showPassword)}
+            >
+              {showPassword ? "隐藏密码" : "显示密码"}
+            </button>
+          )}
           {(recovery || mode === "signup") && (
             <div id="password-policy">
               <p>{PASSWORD_POLICY}</p>
@@ -346,7 +458,7 @@ export default function App() {
               >
                 {passwordRules(password).map((rule) => (
                   <li key={rule.id} className={rule.met ? "met" : "unmet"}>
-                    {rule.met ? "已满足" : "未满足"}：{rule.label}
+                    {rule.met ? "✓ 已满足" : "未满足"}：{rule.label}
                   </li>
                 ))}
               </ul>
@@ -448,14 +560,25 @@ export default function App() {
           <p>尚未读取到数据，请点击刷新重试。</p>
         ) : page === "today" ? (
           <section>
-            <h2>
-              今天 <small>{today}</small>
-            </h2>
-            <p>
-              {active.length
-                ? `已完成 ${done}/${active.length} · ${Math.round((done / active.length) * 100)}%`
-                : "今天还没有进行中的习惯。"}
-            </p>
+            <div className="welcome">
+              <p>今天也在慢慢变好 🌱</p>
+              <h2>
+                今天 <small>{today}</small>
+              </h2>
+              <p>
+                {active.length
+                  ? `已完成 ${done}/${active.length} · ${Math.round((done / active.length) * 100)}%`
+                  : "今天还没有进行中的习惯。"}
+              </p>
+              <progress
+                aria-label="今日完成进度"
+                value={done}
+                max={active.length || 1}
+              />
+            </div>
+            {!active.length && (
+              <p className="empty">先种下你的第一个习惯吧 🌱</p>
+            )}
             <button
               disabled={disabled}
               onClick={() =>
@@ -477,12 +600,22 @@ export default function App() {
                   today,
                 ).current;
                 return (
-                  <article key={h.id} className={`card color-${h.color}`}>
-                    <div>
+                  <article
+                    key={h.id}
+                    className={`card color-${h.color} ${checked ? "completed" : ""}`}
+                  >
+                    <span className="habit-symbol" aria-hidden="true">
+                      🌱
+                    </span>
+                    <div className="habit-main">
                       <h3>{h.name}</h3>
-                      <p>连续 {current} 天</p>
+                      <p>
+                        {checked ? "✓ 已完成 · " : ""}连续 {current} 天
+                      </p>
                     </div>
                     <button
+                      className="check-button"
+                      aria-label={checked ? "取消打卡" : "打卡"}
                       aria-pressed={checked}
                       disabled={disabled}
                       onClick={() =>
@@ -493,31 +626,36 @@ export default function App() {
                         })
                       }
                     >
-                      {checked ? "取消打卡" : "打卡"}
+                      {busy ? "…" : checked ? "✓" : "打卡"}
                     </button>
-                    <button
-                      className="secondary"
-                      onClick={() => {
-                        setSelectedId(h.id);
-                        setPage("history");
-                      }}
-                    >
-                      查看历史
-                    </button>
-                    <button
-                      className="secondary"
-                      disabled={disabled}
-                      onClick={() =>
-                        setForm({
-                          id: h.id,
-                          name: h.name,
-                          color: h.color,
-                          creating: false,
-                        })
-                      }
-                    >
-                      编辑
-                    </button>
+                    <details className="habit-actions">
+                      <summary>更多操作</summary>
+                      <div className="row">
+                        <button
+                          className="secondary"
+                          onClick={() => {
+                            setSelectedId(h.id);
+                            setPage("history");
+                          }}
+                        >
+                          查看历史
+                        </button>
+                        <button
+                          className="secondary"
+                          disabled={disabled}
+                          onClick={() =>
+                            setForm({
+                              id: h.id,
+                              name: h.name,
+                              color: h.color,
+                              creating: false,
+                            })
+                          }
+                        >
+                          编辑
+                        </button>
+                      </div>
+                    </details>
                   </article>
                 );
               })}

@@ -230,7 +230,7 @@ test.use({
   isMobile: true,
   hasTouch: true,
 });
-test("login, daily checkin/cancel and clear-browser recovery from cloud", async ({
+test("login, daily checkin/cancel and logout recovery from cloud", async ({
   page,
 }) => {
   const api = await backend(page);
@@ -256,9 +256,9 @@ test("login, daily checkin/cancel and clear-browser recovery from cloud", async 
   await expect(
     page.getByRole("button", { name: "登录", exact: true }),
   ).toBeVisible();
-  await page.evaluate(() => localStorage.clear());
   await page.reload();
   await login(page);
+  await page.getByText("更多操作", { exact: true }).click();
   await page.getByRole("button", { name: "查看历史" }).click();
   await expect(
     page.getByRole("button", { name: "2026-10-09 已打卡" }),
@@ -277,6 +277,7 @@ test("create, edit, historical checkin and archive preserves today's completion"
   const card = page
     .locator("article")
     .filter({ has: page.getByRole("heading", { name: "运动", exact: true }) });
+  await card.getByText("更多操作", { exact: true }).click();
   await card.getByRole("button", { name: "编辑", exact: true }).click();
   await page.getByLabel("名称", { exact: true }).fill("运动十分钟");
   await page.getByRole("button", { name: "保存习惯" }).click();
@@ -284,6 +285,8 @@ test("create, edit, historical checkin and archive preserves today's completion"
     has: page.getByRole("heading", { name: "运动十分钟", exact: true }),
   });
   await updated.getByRole("button", { name: "打卡", exact: true }).click();
+  if (!(await updated.getByRole("button", { name: "查看历史" }).isVisible()))
+    await updated.getByText("更多操作", { exact: true }).click();
   await updated.getByRole("button", { name: "查看历史" }).click();
   await expect(
     page.getByRole("button", { name: "2026-10-11 已打卡" }),
@@ -301,6 +304,7 @@ test("historical dates, denominator and streak", async ({ page }) => {
   await backend(page);
   await page.goto("./");
   await login(page);
+  await page.getByText("更多操作", { exact: true }).click();
   await page.getByRole("button", { name: "查看历史" }).click();
   await expect(page.getByText("当前连续 2 天 · 最长连续 2 天")).toBeVisible();
   await expect(page.getByText("本月 2/11 天 · 完成率 18%")).toBeVisible();
@@ -607,7 +611,7 @@ test("PWA manifest/icons stay scoped and no Service Worker is registered", async
   const apple = await page
     .locator('link[rel="apple-touch-icon"]')
     .getAttribute("href");
-  expect(apple).toBe(`${base}icons/apple-touch-icon.png`);
+  expect(apple).toBe(`${base}icons/apple-touch-icon.png?v=sprout-2`);
   const appleResponse = await page.request.get(
     new URL(apple!, page.url()).href,
   );
@@ -642,3 +646,43 @@ test("failed app module has a manual recovery entry instead of an empty page", a
     page.getByRole("button", { name: "联网重新加载" }),
   ).toBeVisible();
 });
+
+for (const deadline of ["idle", "absolute"] as const)
+  test(`session survives reload and expires at ${deadline} boundary`, async ({
+    page,
+  }) => {
+    await backend(page);
+    await page.goto("./");
+    await login(page);
+    await page.reload();
+    await expect(
+      page.getByRole("heading", { name: "阅读", exact: true }),
+    ).toBeVisible();
+    await page.evaluate((deadline) => {
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i)!;
+        if (
+          key.endsWith(":session-policy") &&
+          key.includes(location.pathname)
+        ) {
+          const value = JSON.parse(localStorage.getItem(key)!);
+          value.loginAt =
+            Date.now() - (deadline === "idle" ? 8 : 30) * 86400000;
+          value.lastActiveAt =
+            Date.now() - (deadline === "idle" ? 7 : 0) * 86400000;
+          localStorage.setItem(key, JSON.stringify(value));
+        }
+      }
+    }, deadline);
+    await page.reload();
+    await expect(
+      page.getByRole("button", { name: "登录", exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByText("为了保护你的账号安全，请重新登录。"),
+    ).toBeVisible();
+    await login(page);
+    await expect(
+      page.getByRole("heading", { name: "阅读", exact: true }),
+    ).toBeVisible();
+  });

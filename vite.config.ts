@@ -33,7 +33,7 @@ export default defineConfig(({ command, mode }) => {
                 attrs: {
                   rel: "apple-touch-icon",
                   sizes: "180x180",
-                  href: `${base}icons/apple-touch-icon.png`,
+                  href: `${base}icons/apple-touch-icon.png?v=sprout-2`,
                 },
                 injectTo: "head" as const,
               },
@@ -41,9 +41,8 @@ export default defineConfig(({ command, mode }) => {
                 tag: "link",
                 attrs: {
                   rel: "icon",
-                  type: "image/png",
-                  sizes: "192x192",
-                  href: `${base}icons/icon-192.png`,
+                  type: "image/svg+xml",
+                  href: `${base}icons/source.svg?v=sprout-2`,
                 },
                 injectTo: "head" as const,
               },
