@@ -35,11 +35,15 @@ async function backend(page: Page, snapshot = fixture()) {
   };
   const encode = (data: unknown) =>
     Buffer.from(JSON.stringify(data)).toString("base64url");
-  const tokenFor = (id: string) =>
-    `${encode({ alg: "HS256", typ: "JWT" })}.${encode({ sub: id, aud: "authenticated", exp: Math.floor(now.getTime() / 1000) + 3600 })}.fixture-signature`;
+  const tokenFor = (id: string, sessionNumber = 0) =>
+    `${encode({ alg: "HS256", typ: "JWT" })}.${encode({ sub: id, session_number: sessionNumber, aud: "authenticated", exp: Math.floor(now.getTime() / 1000) + 3600 })}.fixture-signature`;
   const token = tokenFor(uid);
   let release: (() => void) | null = null;
   let holdNext = false;
+  let holdNextLogout = false;
+  let releaseLogout: (() => void) | null = null;
+  let logoutRequests = 0;
+  let issuedSessions = 0;
   let serverPasswordError = false;
   let signupRequests = 0;
   let failRead = false,
@@ -69,15 +73,17 @@ async function backend(page: Page, snapshot = fixture()) {
           },
           400,
         );
+      issuedSessions++;
       return respond({
         access_token: tokenFor(
           args.email === "other@example.test"
             ? "00000000-0000-0000-0000-000000000002"
             : uid,
+          issuedSessions,
         ),
         token_type: "bearer",
         expires_in: 3600,
-        refresh_token: "fixture-refresh-token",
+        refresh_token: `fixture-refresh-token-${issuedSessions}`,
         user: {
           ...user,
           id:
@@ -107,7 +113,16 @@ async function backend(page: Page, snapshot = fixture()) {
       }
       return respond(path.endsWith("signup") ? { user, session: null } : {});
     }
-    if (path === "/auth/v1/logout") return route.fulfill({ status: 204 });
+    if (path === "/auth/v1/logout") {
+      logoutRequests++;
+      if (holdNextLogout) {
+        holdNextLogout = false;
+        await new Promise<void>((resolve) => {
+          releaseLogout = resolve;
+        });
+      }
+      return route.fulfill({ status: 204 });
+    }
     if (path === "/rest/v1/rpc/read_snapshot") {
       reads++;
       expect(request.headers()["content-profile"]).toBe("habit_mobile");
@@ -177,6 +192,14 @@ async function backend(page: Page, snapshot = fixture()) {
   return {
     snapshot,
     token,
+    holdLogout: () => {
+      holdNextLogout = true;
+    },
+    releaseLogout: () => {
+      releaseLogout?.();
+      releaseLogout = null;
+    },
+    logoutRequests: () => logoutRequests,
     signupRequests: () => signupRequests,
     serverPasswordError: () => {
       serverPasswordError = true;
@@ -402,7 +425,7 @@ test("preview auth never reads or removes production session and legacy business
     info.project.name !== "preview",
     "Preview-specific same-origin storage check",
   );
-  await backend(page);
+  const api = await backend(page);
   await page.goto("./");
   await login(page);
   await expect(
@@ -410,34 +433,8 @@ test("preview auth never reads or removes production session and legacy business
   ).toBeVisible();
   const previewKey = "habit-tracker-preview:browser-check.supabase.co:auth";
   const productionKey = "sb-browser-check-auth-token";
-  const session = await page.evaluate(
-    (key) => localStorage.getItem(key),
-    previewKey,
-  );
-  expect(session).toBeTruthy();
-  await page.getByRole("button", { name: "账号", exact: true }).click();
-  await page.getByRole("button", { name: "退出登录" }).click();
-  await page.evaluate(
-    ({ previewKey, productionKey, session }) => {
-      localStorage.removeItem(previewKey);
-      localStorage.setItem(productionKey, session!);
-      localStorage.setItem("daily-progress:v1", "legacy-one");
-      localStorage.setItem("daily-progress:v2", "legacy-two");
-    },
-    { previewKey, productionKey, session },
-  );
-  await page.reload();
-  await expect(
-    page.getByRole("button", { name: "登录", exact: true }),
-  ).toBeVisible();
-  await login(page);
-  await expect(
-    page.getByRole("heading", { name: "阅读", exact: true }),
-  ).toBeVisible();
-  await page.getByRole("button", { name: "账号", exact: true }).click();
-  await page.getByRole("button", { name: "退出登录" }).click();
-  expect(
-    await page.evaluate(
+  const readStorage = () =>
+    page.evaluate(
       ({ previewKey, productionKey }) => ({
         preview: localStorage.getItem(previewKey),
         production: localStorage.getItem(productionKey),
@@ -445,13 +442,75 @@ test("preview auth never reads or removes production session and legacy business
         v2: localStorage.getItem("daily-progress:v2"),
       }),
       { previewKey, productionKey },
-    ),
-  ).toEqual({
+    );
+  const session = (await readStorage()).preview;
+  expect(session).toBeTruthy();
+  // Wait for the first SDK signOut to finish before touching fixtures/reloading.
+  await page.getByRole("button", { name: "账号", exact: true }).click();
+  await page.getByRole("button", { name: "退出登录" }).click();
+  await expect(
+    page.getByRole("button", { name: "登录", exact: true }),
+  ).toBeVisible();
+  expect((await readStorage()).preview).toBeNull();
+  // Do not manually remove preview storage: that would hide logout failures.
+  await page.evaluate(
+    ({ productionKey, session }) => {
+      localStorage.setItem(productionKey, session!);
+      localStorage.setItem("daily-progress:v1", "legacy-one");
+      localStorage.setItem("daily-progress:v2", "legacy-two");
+    },
+    { productionKey, session },
+  );
+  const signedOut = {
     preview: null,
     production: session,
     v1: "legacy-one",
     v2: "legacy-two",
+  };
+  expect(await readStorage()).toEqual(signedOut);
+  await page.reload();
+  await expect(
+    page.getByRole("button", { name: "登录", exact: true }),
+  ).toBeVisible();
+  expect(await readStorage()).toEqual(signedOut); // no automatic production import
+  await login(page);
+  await expect(
+    page.getByRole("heading", { name: "阅读", exact: true }),
+  ).toBeVisible();
+  expect(await readStorage()).toMatchObject({
+    production: session,
+    v1: "legacy-one",
+    v2: "legacy-two",
   });
+  expect((await readStorage()).preview).toBeTruthy();
+  expect((await readStorage()).preview).not.toBe(session); // genuinely new simulated session
+  const beforeLogout = api.logoutRequests();
+  api.holdLogout();
+  try {
+    await page.getByRole("button", { name: "账号", exact: true }).click();
+    await page.getByRole("button", { name: "退出登录" }).click();
+    await expect.poll(() => api.logoutRequests()).toBe(beforeLogout + 1);
+    // Deterministic reproduction: SDK still holds its own session while the
+    // revocation response is pending. The old immediate null assertion fails here.
+    expect((await readStorage()).preview).not.toBeNull();
+    expect(await readStorage()).toMatchObject({
+      production: session,
+      v1: "legacy-one",
+      v2: "legacy-two",
+    });
+  } finally {
+    api.releaseLogout();
+  }
+  // SIGNED_OUT is emitted AFTER _removeSession clears SDK-owned keys.
+  await expect(
+    page.getByRole("button", { name: "登录", exact: true }),
+  ).toBeVisible();
+  expect(await readStorage()).toEqual(signedOut); // exact original invariant
+  await page.reload();
+  await expect(
+    page.getByRole("button", { name: "登录", exact: true }),
+  ).toBeVisible();
+  expect(await readStorage()).toEqual(signedOut); // no post-logout restoration
 });
 
 test("production keeps the original Supabase project auth key", async ({
