@@ -3,6 +3,7 @@ import type { Session } from "@supabase/supabase-js";
 import {
   authRedirect,
   cloud,
+  configIssues,
   message,
   readSnapshot,
   writeCloud,
@@ -241,8 +242,16 @@ export default function App() {
     return (
       <main className="app">
         <h1>每日进步</h1>
-        <p role="status">尚未配置 Supabase 云端服务。</p>
-        <p>请按项目说明配置公开的项目 URL 和 publishable key 后重新构建。</p>
+        <p role="alert">Supabase 云端配置未就绪，暂时无法登录或保存。</p>
+        <ul>
+          {configIssues.map((issue) => (
+            <li key={issue}>{issue}</li>
+          ))}
+        </ul>
+        <p>
+          请由维护者检查构建配置后重新构建。仅使用项目 URL 和公开 publishable
+          key，不要填写或发送 secret/service_role 密钥。
+        </p>
       </main>
     );
   if (!authReady)

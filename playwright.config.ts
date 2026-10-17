@@ -19,8 +19,9 @@ export default defineConfig({
     url: "http://127.0.0.1:5173",
     reuseExistingServer: false,
     env: {
-      VITE_SUPABASE_URL: "https://habit-browser.invalid",
-      VITE_SUPABASE_PUBLISHABLE_KEY: "sb_publishable_browser_fixture",
+      VITE_SUPABASE_URL: "https://browser-check.supabase.co",
+      VITE_SUPABASE_PUBLISHABLE_KEY:
+        "sb_publishable_0123456789abcdefghijklmnopqrstuvwxyzABCDEF",
     },
   },
 });

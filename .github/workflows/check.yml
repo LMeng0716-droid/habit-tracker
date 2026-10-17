@@ -13,6 +13,10 @@ jobs:
       - run: npm run format:check
       - run: npm test
       - run: npm run build
+        env:
+          # Synthetic format-valid public values; no real project contacted.
+          VITE_SUPABASE_URL: https://build-check.supabase.co
+          VITE_SUPABASE_PUBLISHABLE_KEY: sb_publishable_0123456789abcdefghijklmnopqrstuvwxyzABCDEF
       - run: npx playwright install --with-deps chromium
       - run: npm run test:e2e
       - uses: actions/upload-artifact@v4

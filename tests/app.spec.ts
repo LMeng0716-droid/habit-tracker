@@ -44,7 +44,7 @@ async function backend(page: Page, snapshot = fixture()) {
     failWrite = false,
     reads = 0,
     writes = 0;
-  await page.route("https://habit-browser.invalid/**", async (route) => {
+  await page.route("https://browser-check.supabase.co/**", async (route) => {
     const request = route.request();
     const path = new URL(request.url()).pathname;
     const respond = (body: unknown, status = 200) =>

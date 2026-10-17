@@ -1,12 +1,16 @@
 import { createClient } from "@supabase/supabase-js";
 import { parseSnapshot } from "./domain";
-const url = import.meta.env.VITE_SUPABASE_URL as string | undefined;
-const key = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string | undefined;
-// Only public browser configuration. Never accept secret/service_role keys.
-export const cloud =
-  url?.startsWith("https://") && key?.startsWith("sb_publishable_")
-    ? createClient(url, key, { db: { schema: "habit_mobile" } })
-    : null;
+import { validatePublicConfig } from "./public-config";
+const config = validatePublicConfig({
+  VITE_SUPABASE_URL: import.meta.env.VITE_SUPABASE_URL,
+  VITE_SUPABASE_PUBLISHABLE_KEY: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+});
+export const configIssues = config.ok ? [] : config.issues;
+export const cloud = config.ok
+  ? createClient(config.config.url, config.config.key, {
+      db: { schema: "habit_mobile" },
+    })
+  : null;
 export const authRedirect = () =>
   `${location.origin}${import.meta.env.BASE_URL}`;
 export async function readSnapshot() {

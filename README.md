@@ -6,7 +6,7 @@ React + TypeScript + Vite，Supabase Auth 登录，PostgreSQL 保存习惯和每
 
 ## 本地运行
 
-Node.js 24、npm，执行 `npm ci`。按 `.env.example` 配置 `.env.local`，仅填入独立测试项目的HTTPS URL和公开publishable key；执行 `npm run dev`，访问 `/habit-tracker/`。未配置时显示云端设置提示。
+Node.js 24、npm，执行 `npm ci`。按 `.env.example` 配置 `.env.local`，仅填入独立测试项目的HTTPS URL和公开publishable key；执行 `npm run dev`，访问 `/habit-tracker/`。开发模式未配置时显示云端设置提示；生产构建缺少配置会停止。
 
 ## 数据库安装与安全
 
@@ -24,3 +24,5 @@ Node.js 24、npm，执行 `npm ci`。按 `.env.example` 配置 `.env.local`，�
 - `bash supabase/tests/run-mobile.sh`：本地临时PostgreSQL17容器的RLS、事务和并发测试，无远程连接。
 
 GitHub Pages base保留 `/habit-tracker/`。经另行审核部署时，在GitHub Actions Variables配置 `VITE_SUPABASE_URL` 和 `VITE_SUPABASE_PUBLISHABLE_KEY`。禁止提交service_role、secret key或数据库密码。本次不自动部署、迁移或合并。
+
+公开配置现在必须通过构建前校验。格式规则、GitHub Variables设置和真实Supabase逐步验收见 [配置与验收](docs/mobile/config-and-acceptance.md)。仅缺失配置时可在开发模式查看设置提示；生产构建会停止。

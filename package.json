@@ -8,13 +8,14 @@
   },
   "scripts": {
     "dev": "vite",
-    "build": "tsc --noEmit && vite build",
+    "build": "npm run check:config && tsc --noEmit && vite build",
     "preview": "vite preview",
     "type-check": "tsc --noEmit",
     "test": "vitest run",
     "test:e2e": "playwright test",
-    "format": "prettier --write src tests *.json *.ts index.html",
-    "format:check": "prettier --check src tests *.json *.ts index.html"
+    "format": "prettier --write src tests scripts *.json *.ts index.html",
+    "format:check": "prettier --check src tests scripts *.json *.ts index.html",
+    "check:config": "node scripts/check-public-config.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.117.3",
@@ -23,6 +24,7 @@
   },
   "devDependencies": {
     "@playwright/test": "^1.56.0",
+    "@types/node": "^24.19.2",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "prettier": "3.9.9",

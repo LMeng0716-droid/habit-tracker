@@ -1,3 +1,5 @@
+最新构建校验和真实环境验收要求见 [config-and-acceptance.md](config-and-acceptance.md)；本文的未配置提示仅适用于开发模式，生产构建现在会拒绝缺失配置。
+
 # 手机端云存储：实施与人工验收
 
 ## 当前产品

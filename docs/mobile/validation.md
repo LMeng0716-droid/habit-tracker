@@ -29,3 +29,12 @@
 ## 2026-10-16 权限专项复核
 
 最新授权与测试说明见 [permissions-review.md](permissions-review.md)。本轮补充empty/legacy两种本地安装状态、整份迁移晚期/早期异常回滚、明确的列权限断言和跨用户归档拒绝。两种状态安装及各4组并发均通过。INSERT列授权与DELETE授权分开，旧组合语法在PG17实际也可执行，未复现其语法错误。前端未修改，本轮仅重跑7个单元测试、类型检查和构建，未重跑浏览器。
+
+## 2026-10-17 公开配置校验
+
+- 39个单元/构建入口测试通过：包含原7个业务测试，以及缺失配置、非法/占位URL、publishable格式、secret/service_role/anon JWT拒绝、额外VITE变量拒绝、dotenv优先级、CLI与直接vite build保护、诊断不回显值、未配置前端提示。
+- 8个手机尺寸Chromium回归通过，仍为模拟API，不是真实Supabase；测试合成URL/key按新格式规则更新，请求全被拦截。
+- TypeScript、format:check、git diff空白检查通过；初次类型检查发现Node测试类型缺失，补充@types/node及测试文件类型引用后重跑通过。
+- 合成公开配置的生产构建通过；缺少配置的实际npm run build以exit=1失败，属于预期拒绝。密钥拒绝/不产生dist及不回显通过隔离临时目录的自动测试验证。
+- Pages base仍为/habit-tracker/；只允许main部署的规则保留。未执行远端Actions或部署，未设置仓库变量。
+- 没有修改或重跑数据库迁移/数据库测试，没有连接真实Supabase。真实注册/邮件/JWT/RLS/跨手机恢复及iPhone验收仍待完成，步骤见config-and-acceptance.md。
