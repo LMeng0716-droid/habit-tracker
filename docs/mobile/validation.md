@@ -38,3 +38,12 @@
 - 合成公开配置的生产构建通过；缺少配置的实际npm run build以exit=1失败，属于预期拒绝。密钥拒绝/不产生dist及不回显通过隔离临时目录的自动测试验证。
 - Pages base仍为/habit-tracker/；只允许main部署的规则保留。未执行远端Actions或部署，未设置仓库变量。
 - 没有修改或重跑数据库迁移/数据库测试，没有连接真实Supabase。真实注册/邮件/JWT/RLS/跨手机恢复及iPhone验收仍待完成，步骤见config-and-acceptance.md。
+
+## 2026-10-17 独立预览第一阶段
+
+- 41个单元测试通过；TypeScript、格式与差异检查通过。
+- 正式和预览路径浏览器套件共18通过、2跳过。跳过项分别是另一base的专属存储断言（不适用），非失败未修复。使用Chromium触控模拟和模拟Supabase API，不是真实邮箱/JWT/iPhone。
+- 新增相同origin下预览Auth与正式Auth/旧daily-progress键的隔离验证；正式路径默认SDK存储键保持不变。注册和重置请求redirect_to在两个base分别匹配当前入口，恢复回调均通过。
+- 合成公开配置下默认生产构建与build:preview均通过；dist-preview/index.html资源base及文件存在检查通过。
+- 新预览工作流YAML解析、Repository变量绑定、contents:read权限及无Pages部署动作检查通过；正式部署工作流与数据库目录完全未修改。
+- 没有创建新仓库、发布网站、远程数据库操作或修改Supabase配置。预览artifact生成不代表站点已上线，真实预览项目与iPhone验收等第二阶段授权。

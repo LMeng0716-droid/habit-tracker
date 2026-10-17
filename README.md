@@ -26,3 +26,5 @@ Node.js 24、npm，执行 `npm ci`。按 `.env.example` 配置 `.env.local`，�
 GitHub Pages base保留 `/habit-tracker/`。经另行审核部署时，在GitHub Actions Variables配置 `VITE_SUPABASE_URL` 和 `VITE_SUPABASE_PUBLISHABLE_KEY`。禁止提交service_role、secret key或数据库密码。本次不自动部署、迁移或合并。
 
 公开配置现在必须通过构建前校验。格式规则、GitHub Variables设置和真实Supabase逐步验收见 [配置与验收](docs/mobile/config-and-acceptance.md)。仅缺失配置时可在开发模式查看设置提示；生产构建会停止。
+
+独立预览第一阶段已提供仅构建artifact的流程，目标base为`/habit-tracker-preview/`，不发布站点。正式base和部署流程保持不变。参见 [预览构建与存储隔离](docs/mobile/preview-stage1.md)。

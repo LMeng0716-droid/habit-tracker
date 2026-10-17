@@ -1,4 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
+import { authStorageKey, callbackUrl } from "./preview";
 import { parseSnapshot } from "./domain";
 import { validatePublicConfig } from "./public-config";
 const config = validatePublicConfig({
@@ -6,13 +7,17 @@ const config = validatePublicConfig({
   VITE_SUPABASE_PUBLISHABLE_KEY: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
 });
 export const configIssues = config.ok ? [] : config.issues;
+const storageKey = config.ok
+  ? authStorageKey(config.config.url, import.meta.env.BASE_URL)
+  : undefined;
 export const cloud = config.ok
   ? createClient(config.config.url, config.config.key, {
       db: { schema: "habit_mobile" },
+      ...(storageKey ? { auth: { storageKey } } : {}),
     })
   : null;
 export const authRedirect = () =>
-  `${location.origin}${import.meta.env.BASE_URL}`;
+  callbackUrl(location.origin, import.meta.env.BASE_URL);
 export async function readSnapshot() {
   if (!cloud) throw new Error("尚未配置云端服务。");
   const { data, error } = await cloud

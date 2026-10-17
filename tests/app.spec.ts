@@ -87,8 +87,12 @@ async function backend(page: Page, snapshot = fixture()) {
       });
     }
     if (path === "/auth/v1/user") return respond({ user, ...user });
-    if (path === "/auth/v1/signup") return respond({ user, session: null });
-    if (path === "/auth/v1/recover") return respond({});
+    if (path === "/auth/v1/signup" || path === "/auth/v1/recover") {
+      expect(new URL(request.url()).searchParams.get("redirect_to")).toBe(
+        new URL("./", page.url()).href,
+      );
+      return respond(path.endsWith("signup") ? { user, session: null } : {});
+    }
     if (path === "/auth/v1/logout") return route.fulfill({ status: 204 });
     if (path === "/rest/v1/rpc/read_snapshot") {
       reads++;
@@ -189,7 +193,7 @@ test("login, daily checkin/cancel and clear-browser recovery from cloud", async 
   page,
 }) => {
   const api = await backend(page);
-  await page.goto("/habit-tracker/");
+  await page.goto("./");
   await login(page);
   await expect(
     page.getByRole("heading", { name: "阅读", exact: true }),
@@ -224,7 +228,7 @@ test("create, edit, historical checkin and archive preserves today's completion"
   page,
 }) => {
   await backend(page);
-  await page.goto("/habit-tracker/");
+  await page.goto("./");
   await login(page);
   await page.getByRole("button", { name: "创建习惯", exact: true }).click();
   await page.getByLabel("名称", { exact: true }).fill("运动");
@@ -254,7 +258,7 @@ test("create, edit, historical checkin and archive preserves today's completion"
 });
 test("historical dates, denominator and streak", async ({ page }) => {
   await backend(page);
-  await page.goto("/habit-tracker/");
+  await page.goto("./");
   await login(page);
   await page.getByRole("button", { name: "查看历史" }).click();
   await expect(page.getByText("当前连续 2 天 · 最长连续 2 天")).toBeVisible();
@@ -269,7 +273,7 @@ test("failed writes retain input and require refreshing before retry", async ({
   page,
 }) => {
   const api = await backend(page);
-  await page.goto("/habit-tracker/");
+  await page.goto("./");
   await login(page);
   await page.getByRole("button", { name: "创建习惯", exact: true }).click();
   await page.getByLabel("名称", { exact: true }).fill("失败后重试");
@@ -292,7 +296,7 @@ test("failed reads are not empty accounts; no horizontal overflow", async ({
 }) => {
   const api = await backend(page);
   api.failRead(true);
-  await page.goto("/habit-tracker/");
+  await page.goto("./");
   await login(page);
   await expect(page.getByRole("alert")).toContainText("读取失败");
   await expect(
@@ -319,7 +323,7 @@ test("legacy localStorage is ignored; signup and reset email flows", async ({
       JSON.stringify({ habits: [{ name: "旧电脑数据" }] }),
     ),
   );
-  await page.goto("/habit-tracker/");
+  await page.goto("./");
   await page.getByRole("button", { name: "注册账号", exact: true }).click();
   await page.getByLabel("邮箱", { exact: true }).fill("owner@example.test");
   await page.getByLabel("密码", { exact: true }).fill("password123");
@@ -338,7 +342,7 @@ test("wrong password stays signed out; another account cannot see old or delayed
   page,
 }) => {
   const api = await backend(page);
-  await page.goto("/habit-tracker/");
+  await page.goto("./");
   await login(page, "wrongpass");
   await expect(page.getByRole("alert")).toContainText("邮箱或密码不正确");
   await login(page);
@@ -363,7 +367,7 @@ test("wrong password stays signed out; another account cannot see old or delayed
 test("password recovery callback shows new-password form", async ({ page }) => {
   const api = await backend(page);
   await page.goto(
-    `/habit-tracker/#access_token=${api.token}&refresh_token=fixture-refresh-token&token_type=bearer&expires_in=3600&type=recovery`,
+    `./#access_token=${api.token}&refresh_token=fixture-refresh-token&token_type=bearer&expires_in=3600&type=recovery`,
   );
   await expect(page.getByRole("heading", { name: "设置新密码" })).toBeVisible();
   await page.getByLabel("密码", { exact: true }).fill("updatedpassword123");
@@ -371,4 +375,90 @@ test("password recovery callback shows new-password form", async ({ page }) => {
   await expect(
     page.getByRole("heading", { name: "阅读", exact: true }),
   ).toBeVisible();
+});
+
+test("preview auth never reads or removes production session and legacy business keys", async ({
+  page,
+}, info) => {
+  test.skip(
+    info.project.name !== "preview",
+    "Preview-specific same-origin storage check",
+  );
+  await backend(page);
+  await page.goto("./");
+  await login(page);
+  await expect(
+    page.getByRole("heading", { name: "阅读", exact: true }),
+  ).toBeVisible();
+  const previewKey = "habit-tracker-preview:browser-check.supabase.co:auth";
+  const productionKey = "sb-browser-check-auth-token";
+  const session = await page.evaluate(
+    (key) => localStorage.getItem(key),
+    previewKey,
+  );
+  expect(session).toBeTruthy();
+  await page.getByRole("button", { name: "账号", exact: true }).click();
+  await page.getByRole("button", { name: "退出登录" }).click();
+  await page.evaluate(
+    ({ previewKey, productionKey, session }) => {
+      localStorage.removeItem(previewKey);
+      localStorage.setItem(productionKey, session!);
+      localStorage.setItem("daily-progress:v1", "legacy-one");
+      localStorage.setItem("daily-progress:v2", "legacy-two");
+    },
+    { previewKey, productionKey, session },
+  );
+  await page.reload();
+  await expect(
+    page.getByRole("button", { name: "登录", exact: true }),
+  ).toBeVisible();
+  await login(page);
+  await expect(
+    page.getByRole("heading", { name: "阅读", exact: true }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "账号", exact: true }).click();
+  await page.getByRole("button", { name: "退出登录" }).click();
+  expect(
+    await page.evaluate(
+      ({ previewKey, productionKey }) => ({
+        preview: localStorage.getItem(previewKey),
+        production: localStorage.getItem(productionKey),
+        v1: localStorage.getItem("daily-progress:v1"),
+        v2: localStorage.getItem("daily-progress:v2"),
+      }),
+      { previewKey, productionKey },
+    ),
+  ).toEqual({
+    preview: null,
+    production: session,
+    v1: "legacy-one",
+    v2: "legacy-two",
+  });
+});
+
+test("production keeps the original Supabase project auth key", async ({
+  page,
+}, info) => {
+  test.skip(
+    info.project.name !== "production",
+    "Production-specific default-key check",
+  );
+  await backend(page);
+  await page.goto("./");
+  await login(page);
+  await expect(
+    page.getByRole("heading", { name: "阅读", exact: true }),
+  ).toBeVisible();
+  expect(
+    await page.evaluate(() =>
+      localStorage.getItem("sb-browser-check-auth-token"),
+    ),
+  ).toBeTruthy();
+  expect(
+    await page.evaluate(() =>
+      localStorage.getItem(
+        "habit-tracker-preview:browser-check.supabase.co:auth",
+      ),
+    ),
+  ).toBeNull();
 });

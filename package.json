@@ -15,7 +15,8 @@
     "test:e2e": "playwright test",
     "format": "prettier --write src tests scripts *.json *.ts index.html",
     "format:check": "prettier --check src tests scripts *.json *.ts index.html",
-    "check:config": "node scripts/check-public-config.mjs"
+    "check:config": "node scripts/check-public-config.mjs",
+    "build:preview": "npm run build -- --base=/habit-tracker-preview/ --outDir=dist-preview && node scripts/check-preview-build.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.117.3",
