@@ -28,3 +28,5 @@ GitHub Pages base保留 `/habit-tracker/`。经另行审核部署时，在GitHub
 公开配置现在必须通过构建前校验。格式规则、GitHub Variables设置和真实Supabase逐步验收见 [配置与验收](docs/mobile/config-and-acceptance.md)。仅缺失配置时可在开发模式查看设置提示；生产构建会停止。
 
 独立预览第一阶段已提供仅构建artifact的流程，目标base为`/habit-tracker-preview/`，不发布站点。正式base和部署流程保持不变。参见 [预览构建与存储隔离](docs/mobile/preview-stage1.md)。
+
+手机注册/新密码支持12字符及大小写数字实时校验；iPhone可添加主屏幕，提供独立manifest与图标。本版不注册Service Worker，不支持离线打卡。服务器密码策略确认、更新缓存注意事项及真机验收见 [密码与PWA说明](docs/mobile/pwa-password.md)。

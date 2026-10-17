@@ -200,3 +200,51 @@ summary {
   padding: 10px 0;
   cursor: pointer;
 }
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+body {
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+input,
+select {
+  font-size: 16px;
+}
+.app {
+  padding-left: max(16px, env(safe-area-inset-left));
+  padding-right: max(16px, env(safe-area-inset-right));
+}
+nav {
+  z-index: 5;
+  padding-left: max(12px, env(safe-area-inset-left));
+  padding-right: max(12px, env(safe-area-inset-right));
+}
+button {
+  scroll-margin-bottom: 110px;
+}
+.password-rules {
+  padding-left: 20px;
+  font-size: 14px;
+}
+.password-rules .met {
+  color: #23634e;
+}
+.password-rules .unmet {
+  color: #65503f;
+}
+.install-help {
+  margin: 16px 0;
+}
+#startup-error {
+  max-width: 600px;
+  padding: 24px;
+  margin: auto;
+  font: 16px/1.6 system-ui;
+}
+@media (display-mode: standalone) {
+  .auth {
+    padding-top: calc(24px + env(safe-area-inset-top));
+  }
+}

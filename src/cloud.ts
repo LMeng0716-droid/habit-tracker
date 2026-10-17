@@ -1,3 +1,4 @@
+import { passwordError } from "./password";
 import { createClient } from "@supabase/supabase-js";
 import { authStorageKey, callbackUrl } from "./preview";
 import { parseSnapshot } from "./domain";
@@ -35,6 +36,8 @@ export async function writeCloud(
   if (error) throw error;
 }
 export function message(error: unknown): string {
+  const policyMessage = passwordError(error);
+  if (policyMessage) return policyMessage;
   const text =
     error instanceof Error
       ? error.message

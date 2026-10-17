@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { PASSWORD_POLICY, passwordRules, passwordValid } from "./password";
+import { InstallHelp } from "./InstallHelp";
 import type { Session } from "@supabase/supabase-js";
 import {
   authRedirect,
@@ -128,6 +130,14 @@ export default function App() {
     };
     document.addEventListener("visibilitychange", reload);
     window.addEventListener("online", reload);
+    window.addEventListener("pageshow", reload);
+    const offline = () => {
+      setFresh(false);
+      setError(
+        "网络已断开，暂时无法保存。联网后请刷新核对云端记录；没有离线待同步队列。",
+      );
+    };
+    window.addEventListener("offline", offline);
     const timer = window.setInterval(() => {
       if (snapshot && snapshot.today !== businessDate() && !running.current)
         void refresh();
@@ -135,6 +145,8 @@ export default function App() {
     return () => {
       document.removeEventListener("visibilitychange", reload);
       window.removeEventListener("online", reload);
+      window.removeEventListener("pageshow", reload);
+      window.removeEventListener("offline", offline);
       window.clearInterval(timer);
     };
   }, [uid, snapshot, refresh]);
@@ -179,6 +191,10 @@ export default function App() {
   }
   async function submitAuth() {
     if (!cloud || running.current) return;
+    if ((recovery || mode === "signup") && !passwordValid(password)) {
+      setError(`请先满足密码规则：${PASSWORD_POLICY}`);
+      return;
+    }
     running.current = true;
     setBusy(true);
     setError("");
@@ -282,6 +298,7 @@ export default function App() {
             void submitAuth();
           }}
         >
+          <InstallHelp />
           {!recovery && (
             <label>
               邮箱
@@ -299,7 +316,15 @@ export default function App() {
               密码
               <input
                 type="password"
-                minLength={8}
+                minLength={recovery || mode === "signup" ? 12 : undefined}
+                aria-describedby={
+                  recovery || mode === "signup" ? "password-policy" : undefined
+                }
+                aria-invalid={
+                  recovery || mode === "signup"
+                    ? !!password && !passwordValid(password)
+                    : undefined
+                }
                 autoComplete={
                   recovery || mode === "signup"
                     ? "new-password"
@@ -311,7 +336,28 @@ export default function App() {
               />
             </label>
           )}
-          <button disabled={busy}>
+          {(recovery || mode === "signup") && (
+            <div id="password-policy">
+              <p>{PASSWORD_POLICY}</p>
+              <ul
+                className="password-rules"
+                aria-live="polite"
+                aria-label="密码规则"
+              >
+                {passwordRules(password).map((rule) => (
+                  <li key={rule.id} className={rule.met ? "met" : "unmet"}>
+                    {rule.met ? "已满足" : "未满足"}：{rule.label}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          <button
+            disabled={
+              busy ||
+              ((recovery || mode === "signup") && !passwordValid(password))
+            }
+          >
             {busy
               ? "处理中…"
               : recovery
@@ -393,6 +439,7 @@ export default function App() {
               习惯和打卡记录保存在 Supabase。更换手机后登录同一账号即可恢复。
             </p>
             <p>每天按北京时间计算。断网时无法保存。</p>
+            <InstallHelp />
             <button disabled={busy} onClick={() => void logout()}>
               退出登录
             </button>

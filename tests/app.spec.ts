@@ -40,6 +40,8 @@ async function backend(page: Page, snapshot = fixture()) {
   const token = tokenFor(uid);
   let release: (() => void) | null = null;
   let holdNext = false;
+  let serverPasswordError = false;
+  let signupRequests = 0;
   let failRead = false,
     failWrite = false,
     reads = 0,
@@ -91,6 +93,18 @@ async function backend(page: Page, snapshot = fixture()) {
       expect(new URL(request.url()).searchParams.get("redirect_to")).toBe(
         new URL("./", page.url()).href,
       );
+      if (path.endsWith("signup")) {
+        signupRequests++;
+        if (serverPasswordError)
+          return respond(
+            {
+              error_code: "weak_password",
+              msg: "Password should be at least 16 characters.",
+              weak_password: { reasons: ["length"] },
+            },
+            422,
+          );
+      }
       return respond(path.endsWith("signup") ? { user, session: null } : {});
     }
     if (path === "/auth/v1/logout") return route.fulfill({ status: 204 });
@@ -163,6 +177,10 @@ async function backend(page: Page, snapshot = fixture()) {
   return {
     snapshot,
     token,
+    signupRequests: () => signupRequests,
+    serverPasswordError: () => {
+      serverPasswordError = true;
+    },
     holdRead: () => {
       holdNext = true;
     },
@@ -326,7 +344,7 @@ test("legacy localStorage is ignored; signup and reset email flows", async ({
   await page.goto("./");
   await page.getByRole("button", { name: "注册账号", exact: true }).click();
   await page.getByLabel("邮箱", { exact: true }).fill("owner@example.test");
-  await page.getByLabel("密码", { exact: true }).fill("password123");
+  await page.getByLabel("密码", { exact: true }).fill("NewPassword123");
   await page.getByRole("button", { name: "注册", exact: true }).click();
   await expect(page.getByRole("status")).toContainText("验证邮件");
   await page.getByRole("button", { name: "忘记密码", exact: true }).click();
@@ -370,7 +388,7 @@ test("password recovery callback shows new-password form", async ({ page }) => {
     `./#access_token=${api.token}&refresh_token=fixture-refresh-token&token_type=bearer&expires_in=3600&type=recovery`,
   );
   await expect(page.getByRole("heading", { name: "设置新密码" })).toBeVisible();
-  await page.getByLabel("密码", { exact: true }).fill("updatedpassword123");
+  await page.getByLabel("密码", { exact: true }).fill("UpdatedPassword123");
   await page.getByRole("button", { name: "更新密码" }).click();
   await expect(
     page.getByRole("heading", { name: "阅读", exact: true }),
@@ -461,4 +479,107 @@ test("production keeps the original Supabase project auth key", async ({
       ),
     ),
   ).toBeNull();
+});
+
+test("signup password checklist validates before sending; server policy is translated", async ({
+  page,
+}) => {
+  const api = await backend(page);
+  await page.goto("./");
+  await page.getByRole("button", { name: "注册账号", exact: true }).click();
+  await page.getByLabel("邮箱", { exact: true }).fill("owner@example.test");
+  await page.getByLabel("密码", { exact: true }).fill("lowercase123456");
+  await expect(page.getByRole("list", { name: "密码规则" })).toContainText(
+    "未满足：包含大写英文字母",
+  );
+  await expect(
+    page.getByRole("button", { name: "注册", exact: true }),
+  ).toBeDisabled();
+  await page
+    .locator("form")
+    .evaluate((form: HTMLFormElement) => form.requestSubmit());
+  await expect(page.getByRole("alert")).toContainText("请先满足密码规则");
+  expect(api.signupRequests()).toBe(0);
+  await page.getByLabel("密码", { exact: true }).fill("NewPassword123");
+  await expect(
+    page.getByRole("button", { name: "注册", exact: true }),
+  ).toBeEnabled();
+  api.serverPasswordError();
+  await page.getByRole("button", { name: "注册", exact: true }).click();
+  await expect(page.getByRole("alert")).toContainText("至少 16 个字符");
+});
+test("existing short-password account can still log in", async ({ page }) => {
+  await backend(page);
+  await page.goto("./");
+  await login(page, "old123");
+  await expect(
+    page.getByRole("heading", { name: "阅读", exact: true }),
+  ).toBeVisible();
+});
+test("PWA manifest/icons stay scoped and no Service Worker is registered", async ({
+  page,
+  context,
+}, info) => {
+  await backend(page);
+  await page.goto("./");
+  const base = new URL(info.project.use.baseURL!).pathname;
+  const manifestHref = await page
+    .locator('link[rel="manifest"]')
+    .getAttribute("href");
+  expect(manifestHref).toBe(`${base}manifest.webmanifest`);
+  const response = await page.request.get(
+    new URL(manifestHref!, page.url()).href,
+  );
+  expect(response.ok()).toBe(true);
+  const manifest = await response.json();
+  expect(manifest.name).toBe("每日进步");
+  expect(manifest.scope).toBe(base);
+  expect(manifest.id).toBe(base);
+  expect(manifest.start_url).toBe(base);
+  expect(manifest.display).toBe("standalone");
+  for (const icon of manifest.icons) {
+    const result = await page.request.get(new URL(icon.src, page.url()).href);
+    expect(result.ok()).toBe(true);
+    const png = await result.body();
+    const size = Number(icon.sizes.split("x")[0]);
+    expect(png.readUInt32BE(16)).toBe(size);
+    expect(png.readUInt32BE(20)).toBe(size);
+  }
+  const apple = await page
+    .locator('link[rel="apple-touch-icon"]')
+    .getAttribute("href");
+  expect(apple).toBe(`${base}icons/apple-touch-icon.png`);
+  const appleResponse = await page.request.get(
+    new URL(apple!, page.url()).href,
+  );
+  expect((await appleResponse.body()).readUInt32BE(16)).toBe(180);
+  expect(
+    await page.evaluate(
+      async () => (await navigator.serviceWorker.getRegistrations()).length,
+    ),
+  ).toBe(0);
+  await login(page);
+  await page.reload();
+  await expect(
+    page.getByRole("heading", { name: "阅读", exact: true }),
+  ).toBeVisible();
+  await context.setOffline(true);
+  await page.evaluate(() => window.dispatchEvent(new Event("offline")));
+  await expect(page.getByRole("alert")).toContainText("没有离线待同步队列");
+  await expect(
+    page.getByRole("button", { name: "打卡", exact: true }),
+  ).toBeDisabled();
+  await context.setOffline(false);
+});
+test("failed app module has a manual recovery entry instead of an empty page", async ({
+  page,
+}) => {
+  await page.route("**/src/main.tsx", (route) => route.abort());
+  await page.goto("./");
+  await expect(
+    page.getByRole("heading", { name: "每日进步暂时未能加载" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "联网重新加载" }),
+  ).toBeVisible();
 });

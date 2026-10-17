@@ -47,3 +47,13 @@
 - 合成公开配置下默认生产构建与build:preview均通过；dist-preview/index.html资源base及文件存在检查通过。
 - 新预览工作流YAML解析、Repository变量绑定、contents:read权限及无Pages部署动作检查通过；正式部署工作流与数据库目录完全未修改。
 - 没有创建新仓库、发布网站、远程数据库操作或修改Supabase配置。预览artifact生成不代表站点已上线，真实预览项目与iPhone验收等第二阶段授权。
+
+## 2026-10-17 密码体验与在线PWA
+
+- 44个单元测试通过，类型、格式、diff检查通过。
+- 双base浏览器套件26通过、2个不适用路径专属检查跳过。新增实时密码规则/提交前阻断、服务器16字符错误中文提示、旧6字符密码登录、manifest scope/id/入口及PNG尺寸、无Service Worker注册、断网禁用保存、模块加载失败恢复入口；原登录/恢复/归档/存储隔离继续通过。
+- 测试发现开发模式manifest重复base，改为post HTML注入后，两路径专项及完整套件重跑通过。首次SVG转换缺少系统rsvg工具，改用已有Playwright渲染生成三张PNG，图标尺寸和实际读取均验证通过。
+- 合成公开配置下正式build与build:preview通过，预览产物检查包含manifest、所有入口资源和192/512/180 PNG；没有发布网站。
+- 不注册SW，不缓存API，不增加离线写入；不注销同域其他SW，不清理CacheStorage/旧localStorage。已打开页面断网只读。
+- 真实Supabase密码策略未取得管理端读取权限，未修改策略或创建弱密码探测账号；不能声称服务端已强制新规则。真实iPhone添加主屏幕、独立窗口登录存储和系统/CDN更新缓存仍需人工验收。
+- 本轮不修改数据库或打卡、不改正式部署流程、不上传预览仓库。说明及人工配置见pwa-password.md。
