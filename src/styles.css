@@ -340,12 +340,83 @@ progress {
   color: #586457;
 }
 @media (prefers-reduced-motion: no-preference) {
-  .completed .check-button {
-    animation: confirm-check 180ms ease-out;
+  .celebrate-confirmed .check-button {
+    animation: confirm-check 450ms ease-out;
   }
   @keyframes confirm-check {
     50% {
       transform: scale(1.12);
+    }
+  }
+}
+
+.startup {
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+  gap: 32px;
+  padding: calc(40px + env(safe-area-inset-top))
+    max(20px, env(safe-area-inset-right))
+    calc(32px + env(safe-area-inset-bottom))
+    max(20px, env(safe-area-inset-left));
+  background: #f7faf4;
+}
+.startup-brand img {
+  border-radius: 28px;
+  margin-bottom: 20px;
+}
+.startup-brand p,
+.startup-progress {
+  color: #526858;
+}
+.startup-progress {
+  min-height: 88px;
+  max-width: 420px;
+}
+.startup-progress button {
+  margin: 8px;
+}
+.loading-seed {
+  display: block;
+  font-size: 24px;
+  letter-spacing: 6px;
+  color: #2f8053;
+}
+.card[aria-busy="true"] {
+  border-style: dashed;
+}
+.all-celebration {
+  pointer-events: none;
+  background: #edf6e9;
+  color: #205535;
+  border-radius: 14px;
+  padding: 12px;
+  text-align: center;
+}
+.celebration-stars {
+  display: block;
+  font-size: 25px;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .celebration-stars {
+    animation: grow-stars 1600ms ease-out both;
+  }
+  @keyframes grow-stars {
+    0% {
+      opacity: 0;
+      transform: scale(0.8);
+    }
+    30% {
+      opacity: 1;
+      transform: scale(1.08);
+    }
+    100% {
+      opacity: 1;
+      transform: scale(1);
     }
   }
 }

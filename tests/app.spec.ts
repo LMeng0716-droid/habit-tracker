@@ -42,6 +42,12 @@ async function backend(page: Page, snapshot = fixture()) {
   let holdNext = false;
   let holdNextLogout = false;
   let releaseLogout: (() => void) | null = null;
+  const writeHolds = new Map<
+    string,
+    { committed: boolean; gate: Promise<void>; release: () => void }
+  >();
+  const lostResponses = new Set<string>();
+  const heldWriteRequests = new Set<string>();
   let logoutRequests = 0;
   let issuedSessions = 0;
   let serverPasswordError = false;
@@ -147,15 +153,21 @@ async function backend(page: Page, snapshot = fixture()) {
     }
     if (path.startsWith("/rest/v1/rpc/")) {
       writes++;
+      const args = request.postDataJSON() as Record<
+        string,
+        string | number | boolean
+      >;
+      const habitId = String(args.p_habit_id ?? args.p_id);
+      const hold = writeHolds.get(habitId);
+      if (hold) {
+        heldWriteRequests.add(habitId);
+        if (!hold.committed) await hold.gate;
+      }
       if (failWrite)
         return respond(
           { message: "fixture write failure", code: "XX000" },
           500,
         );
-      const args = request.postDataJSON() as Record<
-        string,
-        string | number | boolean
-      >;
       const rpc = path.split("/").at(-1);
       if (
         rpc === "create_habit" &&
@@ -185,6 +197,12 @@ async function backend(page: Page, snapshot = fixture()) {
             date: String(args.p_date),
           });
       }
+      if (hold?.committed) await hold.gate;
+      if (lostResponses.delete(habitId))
+        return respond(
+          { message: "response lost after commit", code: "XX000" },
+          500,
+        );
       return respond(null);
     }
     throw new Error(`Unhandled fixture endpoint ${path}`);
@@ -192,6 +210,19 @@ async function backend(page: Page, snapshot = fixture()) {
   return {
     snapshot,
     token,
+    holdWrite: (habitId: string, committed = false) => {
+      let release = () => {};
+      const gate = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      writeHolds.set(habitId, { committed, gate, release });
+    },
+    releaseWrite: (habitId: string) => {
+      writeHolds.get(habitId)?.release();
+      writeHolds.delete(habitId);
+    },
+    writeReached: (habitId: string) => heldWriteRequests.has(habitId),
+    loseResponse: (habitId: string) => lostResponses.add(habitId),
     holdLogout: () => {
       holdNextLogout = true;
     },
@@ -686,3 +717,248 @@ for (const deadline of ["idle", "absolute"] as const)
       page.getByRole("heading", { name: "阅读", exact: true }),
     ).toBeVisible();
   });
+
+function twoHabits() {
+  const snapshot = fixture();
+  snapshot.habits.push({ ...snapshot.habits[0], id: "exercise", name: "运动" });
+  return snapshot;
+}
+const habitCard = (page: Page, name: string) =>
+  page
+    .locator("article")
+    .filter({ has: page.getByRole("heading", { name, exact: true }) });
+
+test("optimistic checkins are per-habit, deduplicate rapid taps and survive stale refresh/reverse responses", async ({
+  page,
+}) => {
+  const api = await backend(page, twoHabits());
+  await page.goto("./");
+  await login(page);
+  const reading = habitCard(page, "阅读");
+  const exercise = habitCard(page, "运动");
+  await expect(reading).toBeVisible();
+  const initialReads = api.reads();
+  api.holdWrite("reading");
+  api.holdWrite("exercise");
+  await reading
+    .getByRole("button", { name: "打卡", exact: true })
+    .evaluate((button) => {
+      for (let i = 0; i < 5; i++) (button as HTMLButtonElement).click();
+    });
+  await expect.poll(() => api.writeReached("reading")).toBe(true);
+  await expect(
+    reading.getByRole("button", { name: "取消打卡" }),
+  ).toHaveAttribute("aria-pressed", "true");
+  await expect(reading).toContainText("正在保存");
+  await expect(reading).not.toHaveClass(/celebrate-confirmed/);
+  await expect(page.getByText(/已保存到云端/)).toHaveCount(0);
+  expect(api.writes()).toBe(1);
+  await expect(
+    exercise.getByRole("button", { name: "打卡", exact: true }),
+  ).toBeEnabled();
+  await exercise.getByRole("button", { name: "打卡", exact: true }).click();
+  await expect.poll(() => api.writeReached("exercise")).toBe(true);
+  api.holdRead();
+  await page.getByRole("button", { name: "刷新", exact: true }).click();
+  await expect.poll(() => api.reads()).toBe(initialReads + 1);
+  api.releaseWrite("exercise");
+  await expect(exercise).toHaveAttribute("aria-busy", "false");
+  await expect(reading).toHaveAttribute("aria-busy", "true");
+  api.releaseWrite("reading");
+  await expect(reading).toHaveAttribute("aria-busy", "false");
+  api.releaseRead();
+  await expect(
+    page.getByRole("button", { name: "刷新", exact: true }),
+  ).toBeEnabled();
+  await expect(page.getByText("已完成 2/2 · 100%")).toBeVisible();
+  expect(api.snapshot.checkins.filter((c) => c.date === today)).toHaveLength(2);
+  expect(api.writes()).toBe(2);
+  // Successful target-state RPCs need no second whole-history read per write.
+  expect(api.reads()).toBe(initialReads + 1);
+});
+
+test("failed optimistic write rolls back immediately, locks uncertainty and reconciles before retry", async ({
+  page,
+}) => {
+  const api = await backend(page);
+  await page.goto("./");
+  await login(page);
+  const card = habitCard(page, "阅读");
+  await expect(card).toBeVisible();
+  api.holdWrite("reading");
+  api.failWrite(true);
+  api.holdRead();
+  await card.getByRole("button", { name: "打卡", exact: true }).click();
+  await expect(card.getByRole("button", { name: "取消打卡" })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  api.releaseWrite("reading");
+  await expect(page.getByRole("alert")).toContainText("未确认保存");
+  await expect(
+    card.getByRole("button", { name: "打卡", exact: true }),
+  ).toBeDisabled();
+  await expect(card).toContainText("待核对");
+  await expect(card).not.toHaveClass(/celebrate-confirmed/);
+  await expect(page.getByText("今天的目标全部完成！🌱")).toHaveCount(0);
+  expect(api.writes()).toBe(1);
+  api.failWrite(false);
+  api.releaseRead();
+  await expect(
+    card.getByRole("button", { name: "打卡", exact: true }),
+  ).toBeEnabled();
+  await expect(page.getByRole("status")).toContainText("本次保存未获确认");
+  expect(api.writes()).toBe(1);
+  await card.getByRole("button", { name: "打卡", exact: true }).click();
+  await expect(card).toContainText("已完成");
+});
+
+test("commit with a lost response is recovered by readback without resending or celebrating", async ({
+  page,
+}) => {
+  const api = await backend(page);
+  await page.goto("./");
+  await login(page);
+  const card = habitCard(page, "阅读");
+  await expect(card).toBeVisible();
+  api.loseResponse("reading");
+  await card.getByRole("button", { name: "打卡", exact: true }).click();
+  await expect(card.getByRole("button", { name: "取消打卡" })).toBeEnabled();
+  await expect(page.getByRole("status")).toContainText("本次保存未获确认");
+  expect(api.writes()).toBe(1);
+  await expect(card).not.toHaveClass(/celebrate-confirmed/);
+  await expect(page.getByText("今天的目标全部完成！🌱")).toHaveCount(0);
+});
+
+test("request timeout and failed readback release saving UI but require a fresh snapshot", async ({
+  page,
+}) => {
+  const api = await backend(page);
+  await page.goto("./");
+  await login(page);
+  const card = habitCard(page, "阅读");
+  await expect(card).toBeVisible();
+  api.holdWrite("reading", true);
+  api.failRead(true);
+  await card.getByRole("button", { name: "打卡", exact: true }).click();
+  await expect.poll(() => api.writeReached("reading")).toBe(true);
+  await page.clock.runFor(15001);
+  await expect(page.getByRole("alert")).toContainText("保存结果仍未确认");
+  await expect(card).toHaveAttribute("aria-busy", "false");
+  await expect(
+    card.getByRole("button", { name: "打卡", exact: true }),
+  ).toBeDisabled();
+  api.releaseWrite("reading");
+  api.failRead(false);
+  await page.getByRole("button", { name: "刷新", exact: true }).click();
+  await expect(card.getByRole("button", { name: "取消打卡" })).toBeEnabled();
+  expect(api.writes()).toBe(1);
+});
+
+test("logout while a committed write response is pending cannot repopulate another account", async ({
+  page,
+}) => {
+  const api = await backend(page);
+  await page.goto("./");
+  await login(page);
+  const card = habitCard(page, "阅读");
+  await expect(card).toBeVisible();
+  api.holdWrite("reading", true);
+  await card.getByRole("button", { name: "打卡", exact: true }).click();
+  await expect.poll(() => api.writeReached("reading")).toBe(true);
+  await page.getByRole("button", { name: "账号", exact: true }).click();
+  await page.getByRole("button", { name: "退出登录", exact: true }).click();
+  await expect(
+    page.getByRole("heading", { name: "登录", exact: true }),
+  ).toBeVisible();
+  await page.getByLabel("邮箱", { exact: true }).fill("other@example.test");
+  await page.getByLabel("密码", { exact: true }).fill("password123");
+  await page.getByRole("button", { name: "登录", exact: true }).click();
+  await expect(page.getByText("今天还没有进行中的习惯。")).toBeVisible();
+  api.releaseWrite("reading");
+  await expect(
+    page.getByRole("heading", { name: "阅读", exact: true }),
+  ).toHaveCount(0);
+  await expect(page.getByText(/完成啦|目标全部完成/)).toHaveCount(0);
+});
+
+test("celebrations require acknowledgement, respect reduced motion and do not replay on refresh or cancellation", async ({
+  page,
+}, info) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  const api = await backend(page);
+  await page.goto("./");
+  await login(page);
+  const card = habitCard(page, "阅读");
+  await expect(card).toBeVisible();
+  api.holdWrite("reading");
+  await card.getByRole("button", { name: "打卡", exact: true }).click();
+  await expect(page.getByText("今天的目标全部完成！🌱")).toHaveCount(0);
+  api.releaseWrite("reading");
+  await expect(card).toHaveClass(/celebrate-confirmed/);
+  await expect(page.getByText("今天的目标全部完成！🌱")).toBeVisible();
+  expect(
+    await card
+      .locator(".check-button")
+      .evaluate((button) => getComputedStyle(button).animationName),
+  ).toBe("none");
+  expect(
+    await page
+      .locator(".celebration-stars")
+      .evaluate((stars) => getComputedStyle(stars).animationName),
+  ).toBe("none");
+  await page.screenshot({
+    path: test.info().outputPath(`confirmed-${info.project.name}.png`),
+    fullPage: true,
+  });
+  await page.clock.runFor(2000);
+  await expect(page.getByText("今天的目标全部完成！🌱")).toHaveCount(0);
+  await page.reload();
+  await expect(card.getByRole("button", { name: "取消打卡" })).toBeEnabled();
+  await expect(card).not.toHaveClass(/celebrate-confirmed/);
+  await card.getByRole("button", { name: "取消打卡" }).click();
+  await expect(
+    card.getByRole("button", { name: "打卡", exact: true }),
+  ).toBeEnabled();
+  await expect(card).not.toHaveClass(/celebrate-confirmed/);
+  await card.getByRole("button", { name: "打卡", exact: true }).click();
+  await expect(card.getByRole("button", { name: "取消打卡" })).toBeEnabled();
+  await expect(page.getByText("今天的目标全部完成！🌱")).toHaveCount(0);
+});
+
+test("startup stays branded through a slow initial snapshot, deduplicates wakeups and offers retry on timeout", async ({
+  page,
+}, info) => {
+  const api = await backend(page);
+  await page.goto("./");
+  api.holdRead();
+  await login(page);
+  await expect(page.getByLabel("每日进步启动画面")).toBeVisible();
+  await expect(page.getByText("每天一点点，慢慢变更好。")).toBeVisible();
+  await expect(
+    page.getByText("正在同步今日记录", { exact: false }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "登录", exact: true }),
+  ).toHaveCount(0);
+  await page.evaluate(() => {
+    window.dispatchEvent(new Event("pageshow"));
+    window.dispatchEvent(new Event("online"));
+  });
+  expect(api.reads()).toBe(1);
+  await page.screenshot({
+    path: test.info().outputPath(`startup-${info.project.name}.png`),
+    fullPage: true,
+  });
+  await page.clock.runFor(15001);
+  await expect(page.getByRole("alert")).toContainText("读取失败");
+  await expect(
+    page.getByRole("button", { name: "刷新", exact: true }),
+  ).toBeEnabled();
+  api.releaseRead();
+  await page.getByRole("button", { name: "刷新", exact: true }).click();
+  await expect(
+    page.getByRole("heading", { name: "阅读", exact: true }),
+  ).toBeVisible();
+  expect(api.reads()).toBe(2);
+});

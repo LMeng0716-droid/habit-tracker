@@ -1,4 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { Startup } from "./Startup";
+import {
+  allCompleted,
+  applyCheckin,
+  optimisticSnapshot,
+  type CheckinOperations,
+} from "./checkins";
+import { REQUEST_TIMEOUT } from "./request";
 import { policyKey, readTimes, sessionExpired } from "./session-policy";
 import { PASSWORD_POLICY, passwordRules, passwordValid } from "./password";
 import { InstallHelp } from "./InstallHelp";
@@ -27,7 +35,63 @@ type Form = { id: string; name: string; color: number; creating: boolean };
 export default function App() {
   const [session, setSession] = useState<Session | null>(null);
   const [authReady, setAuthReady] = useState(false);
-  const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
+  const [confirmedSnapshot, setConfirmedSnapshot] = useState<Snapshot | null>(
+    null,
+  );
+  const confirmed = useRef<Snapshot | null>(null);
+  const setSnapshot = useCallback((value: Snapshot | null) => {
+    confirmed.current = value;
+    setConfirmedSnapshot(value);
+  }, []);
+  const [operations, setOperations] = useState<CheckinOperations>({});
+  const operationsRef = useRef<CheckinOperations>({});
+  const snapshot = optimisticSnapshot(confirmedSnapshot, operations);
+  const writeRevision = useRef(0);
+  const operationSequence = useRef(0);
+  const writeControllers = useRef(new Map<string, AbortController>());
+  const readFlight = useRef<{
+    key: string;
+    promise: Promise<boolean>;
+    controller: AbortController;
+  } | null>(null);
+  const [celebrating, setCelebrating] = useState<Record<string, number>>({});
+  const [allCelebration, setAllCelebration] = useState(false);
+  const celebratedDays = useRef(new Set<string>());
+  const [authInitError, setAuthInitError] = useState("");
+  const updateOperations = useCallback((value: CheckinOperations) => {
+    operationsRef.current = value;
+    setOperations(value);
+  }, []);
+  const resetCheckins = useCallback(() => {
+    writeRevision.current++;
+    for (const controller of writeControllers.current.values())
+      controller.abort();
+    writeControllers.current.clear();
+    readFlight.current?.controller.abort();
+    readFlight.current = null;
+    updateOperations({});
+    setCelebrating({});
+    setAllCelebration(false);
+    celebratedDays.current.clear();
+  }, [updateOperations]);
+  useEffect(
+    () => () => {
+      for (const controller of writeControllers.current.values())
+        controller.abort();
+      readFlight.current?.controller.abort();
+    },
+    [],
+  );
+  useEffect(() => {
+    if (!Object.keys(celebrating).length) return;
+    const timer = window.setTimeout(() => setCelebrating({}), 600);
+    return () => clearTimeout(timer);
+  }, [celebrating]);
+  useEffect(() => {
+    if (!allCelebration) return;
+    const timer = window.setTimeout(() => setAllCelebration(false), 1800);
+    return () => clearTimeout(timer);
+  }, [allCelebration]);
   const [fresh, setFresh] = useState(false);
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -53,8 +117,13 @@ export default function App() {
     if (!cloud) return;
     let alive = true;
     let authEvents = 0;
+    const authTimer = window.setTimeout(() => {
+      if (alive) setAuthInitError("暂时无法恢复登录，请检查网络后重试。");
+    }, REQUEST_TIMEOUT);
     const accept = (next: Session | null, interactive = false) => {
       if (!alive) return;
+      clearTimeout(authTimer);
+      setAuthInitError("");
       if (next) {
         const key = policyKey(
           import.meta.env.BASE_URL,
@@ -88,6 +157,7 @@ export default function App() {
 
       if (!alive) return;
       if (account.current !== (next?.user.id ?? null)) {
+        resetCheckins();
         account.current = next?.user.id ?? null;
         accountEpoch.current++;
         readGeneration.current++;
@@ -128,51 +198,56 @@ export default function App() {
       })
       .catch((e: unknown) => {
         if (alive) {
-          setAuthReady(true);
-          setError(message(e));
+          clearTimeout(authTimer);
+          setAuthInitError(message(e));
         }
       });
     return () => {
       alive = false;
+      clearTimeout(authTimer);
       subscription.unsubscribe();
     };
-  }, []);
+  }, [resetCheckins, setSnapshot]);
 
-  const ensureSession = useCallback((activity = false) => {
-    const owner = account.current;
-    if (!owner) return false;
-    const key = policyKey(import.meta.env.BASE_URL, projectUrl, owner);
-    const now = Date.now();
-    try {
-      const value = readTimes(localStorage, key);
-      if (!sessionExpired(value, now) && value) {
-        localStorage.setItem(
-          key,
-          JSON.stringify({
-            ...value,
-            seenAt: Math.max(value.seenAt, now),
-            lastActiveAt: activity
-              ? Math.max(value.lastActiveAt, now)
-              : value.lastActiveAt,
-          }),
-        );
-        return true;
+  const ensureSession = useCallback(
+    (activity = false) => {
+      const owner = account.current;
+      if (!owner) return false;
+      const key = policyKey(import.meta.env.BASE_URL, projectUrl, owner);
+      const now = Date.now();
+      try {
+        const value = readTimes(localStorage, key);
+        if (!sessionExpired(value, now) && value) {
+          localStorage.setItem(
+            key,
+            JSON.stringify({
+              ...value,
+              seenAt: Math.max(value.seenAt, now),
+              lastActiveAt: activity
+                ? Math.max(value.lastActiveAt, now)
+                : value.lastActiveAt,
+            }),
+          );
+          return true;
+        }
+      } catch {
+        /* Fail closed if browser storage becomes unavailable. */
       }
-    } catch {
-      /* Fail closed if browser storage becomes unavailable. */
-    }
-    expirationRunning.current = true;
-    account.current = null;
-    accountEpoch.current++;
-    readGeneration.current++;
-    setSession(null);
-    setSnapshot(null);
-    setFresh(false);
-    setForm(null);
-    setNotice("为了保护你的账号安全，请重新登录。");
-    void cloud?.auth.signOut({ scope: "local" });
-    return false;
-  }, []);
+      expirationRunning.current = true;
+      resetCheckins();
+      account.current = null;
+      accountEpoch.current++;
+      readGeneration.current++;
+      setSession(null);
+      setSnapshot(null);
+      setFresh(false);
+      setForm(null);
+      setNotice("为了保护你的账号安全，请重新登录。");
+      void cloud?.auth.signOut({ scope: "local" });
+      return false;
+    },
+    [resetCheckins, setSnapshot],
+  );
   useEffect(() => {
     const action = (event: Event) => {
       if (event.isTrusted) ensureSession(true);
@@ -194,29 +269,68 @@ export default function App() {
     };
   }, [ensureSession]);
 
-  const refresh = useCallback(async () => {
-    const uid = account.current;
-    if (!uid || !ensureSession()) return false;
+  const refresh = useCallback((): Promise<boolean> => {
+    const owner = account.current;
+    if (!owner || !ensureSession()) return Promise.resolve(false);
+    const epoch = accountEpoch.current;
+    const revision = writeRevision.current;
+    const key = `${owner}:${epoch}:${revision}`;
+    if (readFlight.current?.key === key) return readFlight.current.promise;
+    readFlight.current?.controller.abort();
+    const controller = new AbortController();
     const generation = ++readGeneration.current;
+    const uncertain = Object.values(operationsRef.current).filter(
+      (op) => op.status === "uncertain",
+    );
     setLoading(true);
-    setFresh(false);
-    try {
-      const data = await readSnapshot();
-      if (account.current !== uid || generation !== readGeneration.current)
+    const promise = (async () => {
+      try {
+        const data = await readSnapshot(controller.signal);
+        if (
+          account.current !== owner ||
+          accountEpoch.current !== epoch ||
+          generation !== readGeneration.current ||
+          revision !== writeRevision.current
+        )
+          return false;
+        setSnapshot(data);
+        setFresh(true);
+        setError("");
+        const next = { ...operationsRef.current };
+        for (const op of uncertain)
+          if (next[op.habitId]?.sequence === op.sequence)
+            delete next[op.habitId];
+        updateOperations(next);
+        if (uncertain.length)
+          setNotice(
+            "本次保存未获确认，已重新读取云端记录，请核对结果后再操作。",
+          );
+        return true;
+      } catch (e) {
+        if (
+          account.current === owner &&
+          accountEpoch.current === epoch &&
+          generation === readGeneration.current &&
+          !controller.signal.aborted
+        ) {
+          setFresh(false);
+          setError(`读取失败：${message(e)}`);
+        }
         return false;
-      setSnapshot(data);
-      setFresh(true);
-      setError("");
-      return true;
-    } catch (e) {
-      if (account.current === uid && generation === readGeneration.current)
-        setError(`读取失败：${message(e)}`);
-      return false;
-    } finally {
-      if (account.current === uid && generation === readGeneration.current)
-        setLoading(false);
-    }
-  }, [ensureSession]);
+      } finally {
+        if (
+          account.current === owner &&
+          accountEpoch.current === epoch &&
+          generation === readGeneration.current
+        )
+          setLoading(false);
+        if (readFlight.current?.controller === controller)
+          readFlight.current = null;
+      }
+    })();
+    readFlight.current = { key, promise, controller };
+    return promise;
+  }, [ensureSession, setSnapshot, updateOperations]);
   const uid = session?.user.id;
   useEffect(() => {
     if (uid) void refresh();
@@ -224,7 +338,11 @@ export default function App() {
   useEffect(() => {
     if (!uid) return;
     const reload = () => {
-      if (document.visibilityState === "visible" && !running.current)
+      if (
+        document.visibilityState === "visible" &&
+        !running.current &&
+        !Object.keys(operationsRef.current).length
+      )
         void refresh();
     };
     document.addEventListener("visibilitychange", reload);
@@ -238,7 +356,12 @@ export default function App() {
     };
     window.addEventListener("offline", offline);
     const timer = window.setInterval(() => {
-      if (snapshot && snapshot.today !== businessDate() && !running.current)
+      if (
+        snapshot &&
+        snapshot.today !== businessDate() &&
+        !running.current &&
+        !Object.keys(operationsRef.current).length
+      )
         void refresh();
     }, 30000);
     return () => {
@@ -254,7 +377,13 @@ export default function App() {
     rpc: string,
     args: Record<string, string | number | boolean>,
   ) {
-    if (running.current || !fresh || !account.current || !ensureSession())
+    if (
+      running.current ||
+      Object.keys(operationsRef.current).length ||
+      !fresh ||
+      !account.current ||
+      !ensureSession()
+    )
       return false;
     const owner = account.current;
     const epoch = accountEpoch.current;
@@ -264,8 +393,10 @@ export default function App() {
     setNotice("");
     let committed = false;
     try {
+      writeRevision.current++;
       await writeCloud(rpc, args);
       committed = true;
+      writeRevision.current++;
       if (account.current !== owner || accountEpoch.current !== epoch)
         return false;
       const read = await refresh();
@@ -287,6 +418,104 @@ export default function App() {
         running.current = false;
         setBusy(false);
       }
+    }
+  }
+  async function checkin(habitId: string, date: string, completed: boolean) {
+    if (
+      running.current ||
+      !fresh ||
+      !account.current ||
+      operationsRef.current[habitId] ||
+      !ensureSession() ||
+      !confirmed.current
+    )
+      return;
+    const owner = account.current;
+    const epoch = accountEpoch.current;
+    const sequence = ++operationSequence.current;
+    const controller = new AbortController();
+    writeControllers.current.set(habitId, controller);
+    writeRevision.current++;
+    updateOperations({
+      ...operationsRef.current,
+      [habitId]: { sequence, habitId, date, completed, status: "saving" },
+    });
+    setCelebrating((previous) => {
+      const next = { ...previous };
+      delete next[habitId];
+      return next;
+    });
+    setAllCelebration(false);
+    setNotice("");
+    setError("");
+    const current = () =>
+      account.current === owner &&
+      accountEpoch.current === epoch &&
+      operationsRef.current[habitId]?.sequence === sequence;
+    try {
+      await writeCloud(
+        "set_checkin",
+        { p_habit_id: habitId, p_date: date, p_completed: completed },
+        controller.signal,
+      );
+      if (!current() || !confirmed.current) return;
+      writeRevision.current++;
+      const before = confirmed.current;
+      const after = applyCheckin(before, habitId, date, completed);
+      setSnapshot(after);
+      const next = { ...operationsRef.current };
+      delete next[habitId];
+      updateOperations(next);
+      setNotice(
+        completed ? "完成啦 ✨ 已保存到云端。" : "已取消打卡并保存到云端。",
+      );
+      if (completed && date === after.today && date === businessDate()) {
+        setCelebrating((previous) => ({ ...previous, [habitId]: sequence }));
+        const marker = `${policyKey(import.meta.env.BASE_URL, projectUrl, owner)}:all-completed:${date}`;
+        let previouslyCelebrated = celebratedDays.current.has(date);
+        try {
+          previouslyCelebrated ||= localStorage.getItem(marker) === "1";
+        } catch {
+          /* Memory fallback when storage is unavailable. */
+        }
+        if (
+          !allCompleted(before) &&
+          allCompleted(after) &&
+          !previouslyCelebrated
+        ) {
+          celebratedDays.current.add(date);
+          try {
+            localStorage.setItem(marker, "1");
+          } catch {
+            /* Does not affect cloud saving. */
+          }
+          setAllCelebration(true);
+        }
+      }
+    } catch (e) {
+      if (!current()) return;
+      writeRevision.current++;
+      // Discard only this provisional overlay; preserve other pending habits.
+      updateOperations({
+        ...operationsRef.current,
+        [habitId]: { sequence, habitId, date, completed, status: "uncertain" },
+      });
+      setError(
+        `${message(e)} 未确认保存，已恢复原显示；正在核对云端记录，请勿直接重试。`,
+      );
+      const reconciled = await refresh();
+      if (
+        account.current === owner &&
+        accountEpoch.current === epoch &&
+        !reconciled
+      ) {
+        setError(
+          "保存结果仍未确认，已恢复原显示。请点击刷新核对云端记录后再操作。",
+        );
+      }
+    } finally {
+      if (writeControllers.current.get(habitId) === controller)
+        writeControllers.current.delete(habitId);
     }
   }
   async function submitAuth() {
@@ -341,6 +570,7 @@ export default function App() {
     running.current = true;
     setBusy(true);
     // Clear data immediately; a failed logout still cannot expose previous data.
+    resetCheckins();
     account.current = null;
     accountEpoch.current++;
     readGeneration.current++;
@@ -373,11 +603,7 @@ export default function App() {
       </main>
     );
   if (!authReady)
-    return (
-      <main className="app">
-        <p role="status">正在检查登录状态…</p>
-      </main>
-    );
+    return <Startup error={authInitError} retry={() => location.reload()} />;
   if (!session || recovery)
     return (
       <main className="app auth">
@@ -510,6 +736,16 @@ export default function App() {
       </main>
     );
 
+  if (!snapshot)
+    return (
+      <Startup
+        syncing
+        error={error}
+        retry={() => void refresh()}
+        logout={() => void logout()}
+      />
+    );
+
   const active = snapshot?.habits.filter((h) => !h.archived_on) ?? [];
   const selected =
     snapshot?.habits.find((h) => h.id === selectedId) ?? snapshot?.habits[0];
@@ -521,6 +757,7 @@ export default function App() {
   const stats = selected ? statistics(selected, dates, today, month) : null;
   const streak = streaks(dates, selected?.archived_on ?? today);
   const disabled = busy || loading || !fresh;
+  const hasOperations = Object.keys(operations).length > 0;
   const done = snapshot
     ? active.filter((h) => completedDates(snapshot, h.id).has(today)).length
     : 0;
@@ -542,6 +779,14 @@ export default function App() {
       <main className="app">
         {error && <p role="alert">{error}</p>}
         {notice && <p role="status">{notice}</p>}
+        {allCelebration && (
+          <div className="all-celebration" role="status">
+            <span className="celebration-stars" aria-hidden="true">
+              ✦ 🌱 ✧
+            </span>
+            今天的目标全部完成！🌱
+          </div>
+        )}
         {loading && <p role="status">正在读取云端数据…</p>}
         {page === "account" ? (
           <section>
@@ -580,7 +825,7 @@ export default function App() {
               <p className="empty">先种下你的第一个习惯吧 🌱</p>
             )}
             <button
-              disabled={disabled}
+              disabled={disabled || hasOperations}
               onClick={() =>
                 setForm({
                   id: crypto.randomUUID(),
@@ -602,7 +847,8 @@ export default function App() {
                 return (
                   <article
                     key={h.id}
-                    className={`card color-${h.color} ${checked ? "completed" : ""}`}
+                    className={`card color-${h.color} ${checked ? "completed" : ""} ${celebrating[h.id] ? "celebrate-confirmed" : ""}`}
+                    aria-busy={operations[h.id]?.status === "saving"}
                   >
                     <span className="habit-symbol" aria-hidden="true">
                       🌱
@@ -610,23 +856,24 @@ export default function App() {
                     <div className="habit-main">
                       <h3>{h.name}</h3>
                       <p>
-                        {checked ? "✓ 已完成 · " : ""}连续 {current} 天
+                        {operations[h.id]?.status === "saving"
+                          ? "正在保存 · "
+                          : operations[h.id]?.status === "uncertain"
+                            ? "待核对 · "
+                            : checked
+                              ? "✓ 已完成 · "
+                              : ""}
+                        连续 {current} 天
                       </p>
                     </div>
                     <button
                       className="check-button"
                       aria-label={checked ? "取消打卡" : "打卡"}
                       aria-pressed={checked}
-                      disabled={disabled}
-                      onClick={() =>
-                        void mutate("set_checkin", {
-                          p_habit_id: h.id,
-                          p_date: today,
-                          p_completed: !checked,
-                        })
-                      }
+                      disabled={busy || !fresh || !!operations[h.id]}
+                      onClick={() => void checkin(h.id, today, !checked)}
                     >
-                      {busy ? "…" : checked ? "✓" : "打卡"}
+                      {checked ? "✓" : "打卡"}
                     </button>
                     <details className="habit-actions">
                       <summary>更多操作</summary>
@@ -642,7 +889,7 @@ export default function App() {
                         </button>
                         <button
                           className="secondary"
-                          disabled={disabled}
+                          disabled={disabled || hasOperations}
                           onClick={() =>
                             setForm({
                               id: h.id,
@@ -746,15 +993,14 @@ export default function App() {
                         aria-label={`${day}${checked ? " 已打卡" : " 未打卡"}`}
                         aria-pressed={checked}
                         disabled={
-                          disabled || !allowed || !!selected?.archived_on
+                          busy ||
+                          !fresh ||
+                          !!operations[selected?.id ?? ""] ||
+                          !allowed ||
+                          !!selected?.archived_on
                         }
                         onClick={() =>
-                          selected &&
-                          void mutate("set_checkin", {
-                            p_habit_id: selected.id,
-                            p_date: day,
-                            p_completed: !checked,
-                          })
+                          selected && void checkin(selected.id, day, !checked)
                         }
                       >
                         {Number(day.slice(-2))}
@@ -766,7 +1012,7 @@ export default function App() {
                 {selected && !selected.archived_on && (
                   <button
                     className="secondary"
-                    disabled={disabled}
+                    disabled={disabled || hasOperations}
                     onClick={() => {
                       if (
                         window.confirm(
@@ -830,7 +1076,9 @@ export default function App() {
                 </select>
               </label>
               <div className="row">
-                <button disabled={disabled || !form.name.trim()}>
+                <button
+                  disabled={disabled || hasOperations || !form.name.trim()}
+                >
                   保存习惯
                 </button>
                 <button

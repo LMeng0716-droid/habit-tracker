@@ -1,3 +1,4 @@
+import { boundedRequest } from "./request";
 import { passwordError } from "./password";
 import { createClient } from "@supabase/supabase-js";
 import { authStorageKey, callbackUrl } from "./preview";
@@ -20,20 +21,32 @@ export const cloud = config.ok
   : null;
 export const authRedirect = () =>
   callbackUrl(location.origin, import.meta.env.BASE_URL);
-export async function readSnapshot() {
+export async function readSnapshot(signal?: AbortSignal) {
   if (!cloud) throw new Error("尚未配置云端服务。");
-  const { data, error } = await cloud
-    .schema("habit_mobile")
-    .rpc("read_snapshot");
+  const client = cloud;
+  const { data, error } = await boundedRequest(
+    (requestSignal) =>
+      client
+        .schema("habit_mobile")
+        .rpc("read_snapshot")
+        .abortSignal(requestSignal),
+    signal,
+  );
   if (error) throw error;
   return parseSnapshot(data);
 }
 export async function writeCloud(
   name: string,
   args: Record<string, string | number | boolean>,
+  signal?: AbortSignal,
 ) {
   if (!cloud) throw new Error("尚未配置云端服务。");
-  const { error } = await cloud.schema("habit_mobile").rpc(name, args);
+  const client = cloud;
+  const { error } = await boundedRequest(
+    (requestSignal) =>
+      client.schema("habit_mobile").rpc(name, args).abortSignal(requestSignal),
+    signal,
+  );
   if (error) throw error;
 }
 export function message(error: unknown): string {
@@ -45,6 +58,8 @@ export function message(error: unknown): string {
       : typeof error === "object" && error !== null && "message" in error
         ? String(error.message)
         : "请求失败";
+  if (text.includes("request_timeout"))
+    return "连接超时，保存结果需要重新核对。";
   if (text.includes("Invalid login credentials")) return "邮箱或密码不正确。";
   if (text.includes("Email not confirmed"))
     return "请先打开验证邮件完成邮箱验证。";
