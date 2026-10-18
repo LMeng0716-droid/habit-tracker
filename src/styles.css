@@ -340,12 +340,22 @@ progress {
   color: #586457;
 }
 @media (prefers-reduced-motion: no-preference) {
-  .celebrate-confirmed .check-button {
-    animation: confirm-check 450ms ease-out;
+  .celebrate-confirmed .check-glyph {
+    animation: confirm-check 1000ms ease-out;
   }
   @keyframes confirm-check {
+    0%,
+    100% {
+      transform: scale(1);
+    }
+    25% {
+      transform: translateY(-7px) scale(1.18);
+    }
     50% {
-      transform: scale(1.12);
+      transform: translateY(0) scale(0.94);
+    }
+    70% {
+      transform: translateY(-3px) scale(1.06);
     }
   }
 }
@@ -389,34 +399,151 @@ progress {
 .card[aria-busy="true"] {
   border-style: dashed;
 }
-.all-celebration {
+/* Viewport feedback stays visible even when the user checked a lower card.
+   All decoration is non-interactive and leaves the navigation available. */
+.celebration-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
   pointer-events: none;
-  background: #edf6e9;
-  color: #205535;
-  border-radius: 14px;
-  padding: 12px;
+}
+.success-toast {
+  position: absolute;
+  bottom: calc(92px + env(safe-area-inset-bottom));
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(350px, calc(100% - 32px));
+  border: 1px solid #b3cfa2;
+  border-radius: 20px;
+  padding: 14px 18px;
+  background: #f4fbe9;
+  color: #20462e;
+  box-shadow: 0 6px 24px #29453120;
   text-align: center;
 }
-.celebration-stars {
+.success-toast.toast-top {
+  top: calc(12px + env(safe-area-inset-top));
+  bottom: auto;
+}
+.success-toast strong {
   display: block;
-  font-size: 25px;
+  font-size: 19px;
+}
+.success-toast small {
+  display: block;
+  overflow-wrap: anywhere;
+  margin-top: 4px;
+}
+.all-celebration {
+  border-color: #b1c889;
+  background: #f9f9db;
+}
+.habit-main {
+  position: relative;
+}
+.card-success {
+  position: relative;
+  display: inline-block;
+  margin: 4px 0;
+  padding: 4px 9px;
+  border-radius: 10px;
+  background: #e7f5d8;
+  color: #235137;
+  font-size: 15px;
+  pointer-events: none;
+}
+.card-sparkles {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.card-sparkles i {
+  position: absolute;
+  left: calc(10% + var(--particle) * 19%);
+  top: 0;
+  font-size: 15px;
+  font-style: normal;
+  color: #548b45;
+}
+.card-sparkles i:nth-child(even) {
+  color: #b99236;
+}
+.confetti-field {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+.confetti-field i {
+  position: absolute;
+  left: calc(var(--lane) * 1%);
+  top: 16%;
+  font-style: normal;
+  color: #76a966;
+  font-size: 21px;
+}
+.confetti-field i:nth-child(even) {
+  color: #c7a34c;
+  font-size: 16px;
 }
 @media (prefers-reduced-motion: no-preference) {
-  .celebration-stars {
-    animation: grow-stars 1600ms ease-out both;
+  .card-success {
+    animation: success-bloom 1000ms ease-out both;
   }
-  @keyframes grow-stars {
+  .card-sparkles i {
+    animation: sparkle-burst 1000ms ease-out both;
+  }
+  .confetti-field i {
+    animation: confetti-fall 1900ms ease-out var(--delay) both;
+  }
+  @keyframes success-bloom {
     0% {
       opacity: 0;
-      transform: scale(0.8);
+      transform: translateY(4px) scale(0.92);
     }
-    30% {
+    25%,
+    80% {
       opacity: 1;
-      transform: scale(1.08);
+      transform: translateY(0) scale(1);
     }
     100% {
       opacity: 1;
-      transform: scale(1);
     }
   }
+  @keyframes sparkle-burst {
+    0% {
+      opacity: 0;
+      transform: translateY(0) scale(0.4);
+    }
+    25% {
+      opacity: 1;
+    }
+    100% {
+      opacity: 0;
+      transform: translate(var(--drift), -36px) rotate(40deg) scale(0.7);
+    }
+  }
+  @keyframes confetti-fall {
+    0% {
+      opacity: 0;
+      transform: translateY(-5vh) rotate(0);
+    }
+    15%,
+    70% {
+      opacity: 1;
+    }
+    100% {
+      opacity: 0;
+      transform: translate(var(--drift), 65vh) rotate(220deg);
+    }
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .card-sparkles,
+  .confetti-field {
+    display: none;
+  }
+}
+
+.check-glyph {
+  display: inline-block;
 }

@@ -341,6 +341,8 @@ test("historical dates, denominator and streak", async ({ page }) => {
   await expect(page.getByText("本月 2/11 天 · 完成率 18%")).toBeVisible();
   await page.getByRole("button", { name: "2026-10-08 未打卡" }).click();
   await expect(page.getByText("当前连续 3 天 · 最长连续 3 天")).toBeVisible();
+  await expect(page.locator(".celebration-layer")).toHaveCount(0);
+  await expect(page.locator(".card-success")).toHaveCount(0);
   await expect(
     page.getByRole("button", { name: "2026-10-12 未打卡" }),
   ).toBeDisabled();
@@ -800,6 +802,8 @@ test("failed optimistic write rolls back immediately, locks uncertainty and reco
   ).toBeDisabled();
   await expect(card).toContainText("待核对");
   await expect(card).not.toHaveClass(/celebrate-confirmed/);
+  await expect(page.locator(".card-success")).toHaveCount(0);
+  await expect(page.locator(".celebration-layer")).toHaveCount(0);
   await expect(page.getByText("今天的目标全部完成！🌱")).toHaveCount(0);
   expect(api.writes()).toBe(1);
   api.failWrite(false);
@@ -827,6 +831,8 @@ test("commit with a lost response is recovered by readback without resending or 
   await expect(page.getByRole("status")).toContainText("本次保存未获确认");
   expect(api.writes()).toBe(1);
   await expect(card).not.toHaveClass(/celebrate-confirmed/);
+  await expect(page.locator(".card-success")).toHaveCount(0);
+  await expect(page.locator(".celebration-layer")).toHaveCount(0);
   await expect(page.getByText("今天的目标全部完成！🌱")).toHaveCount(0);
 });
 
@@ -882,7 +888,7 @@ test("logout while a committed write response is pending cannot repopulate anoth
   await expect(page.getByText(/完成啦|目标全部完成/)).toHaveCount(0);
 });
 
-test("celebrations require acknowledgement, respect reduced motion and do not replay on refresh or cancellation", async ({
+test("celebrations require acknowledgement, respect reduced motion and replay only on a new confirmed completion", async ({
   page,
 }, info) => {
   await page.emulateMedia({ reducedMotion: "reduce" });
@@ -904,14 +910,18 @@ test("celebrations require acknowledgement, respect reduced motion and do not re
   ).toBe("none");
   expect(
     await page
-      .locator(".celebration-stars")
-      .evaluate((stars) => getComputedStyle(stars).animationName),
+      .locator(".confetti-field")
+      .evaluate((stars) => getComputedStyle(stars).display),
   ).toBe("none");
+  await expect(card.locator(".card-success strong")).toHaveText("完成啦！✨");
+  await expect(page.locator(".success-toast")).toContainText(
+    "今天的目标全部完成！🌱",
+  );
   await page.screenshot({
     path: test.info().outputPath(`confirmed-${info.project.name}.png`),
     fullPage: true,
   });
-  await page.clock.runFor(2000);
+  await page.clock.runFor(2200);
   await expect(page.getByText("今天的目标全部完成！🌱")).toHaveCount(0);
   await page.reload();
   await expect(card.getByRole("button", { name: "取消打卡" })).toBeEnabled();
@@ -923,7 +933,8 @@ test("celebrations require acknowledgement, respect reduced motion and do not re
   await expect(card).not.toHaveClass(/celebrate-confirmed/);
   await card.getByRole("button", { name: "打卡", exact: true }).click();
   await expect(card.getByRole("button", { name: "取消打卡" })).toBeEnabled();
-  await expect(page.getByText("今天的目标全部完成！🌱")).toHaveCount(0);
+  await expect(card.locator(".card-success strong")).toHaveText("完成啦！✨");
+  await expect(page.getByText("今天的目标全部完成！🌱")).toBeVisible();
 });
 
 test("startup stays branded through a slow initial snapshot, deduplicates wakeups and offers retry on timeout", async ({
@@ -961,4 +972,146 @@ test("startup stays branded through a slow initial snapshot, deduplicates wakeup
     page.getByRole("heading", { name: "阅读", exact: true }),
   ).toBeVisible();
   expect(api.reads()).toBe(2);
+});
+
+test("confirmed success is visible next to a lower card and inside the viewport, with lightweight particles", async ({
+  page,
+}, info) => {
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+  const snapshot = twoHabits();
+  for (let i = 0; i < 10; i++)
+    snapshot.habits.push({
+      ...snapshot.habits[0],
+      id: `extra-${i}`,
+      name: `习惯${i}`,
+    });
+  const api = await backend(page, snapshot);
+  await page.goto("./");
+  await login(page);
+  const card = habitCard(page, "习惯9");
+  await card.scrollIntoViewIfNeeded();
+  api.holdWrite("extra-9");
+  await card.getByRole("button", { name: "打卡", exact: true }).click();
+  await expect(card.locator(".card-success")).toHaveCount(0);
+  await expect(page.locator(".success-toast")).toHaveCount(0);
+  api.releaseWrite("extra-9");
+  await expect(card.locator(".card-success strong")).toHaveText("完成啦！✨");
+  await expect(page.locator(".success-toast")).toContainText("完成啦！✨");
+  const toast = await page.locator(".success-toast").boundingBox();
+  expect(toast!.y).toBeGreaterThanOrEqual(0);
+  expect(toast!.y + toast!.height).toBeLessThan(844 - 60);
+  const cardBox = await card.boundingBox();
+  expect(toast!.y + toast!.height).toBeLessThanOrEqual(cardBox!.y);
+  expect(
+    await page
+      .locator(".celebration-layer")
+      .evaluate((el) => getComputedStyle(el).pointerEvents),
+  ).toBe("none");
+  expect(
+    await card
+      .locator(".check-glyph")
+      .evaluate((el) => getComputedStyle(el).animationName),
+  ).toBe("confirm-check");
+  await expect(card.locator(".card-sparkles i")).toHaveCount(5);
+  await page.screenshot({
+    path: test.info().outputPath(`visible-card-${info.project.name}.png`),
+    fullPage: false,
+  });
+  await page.clock.runFor(1200);
+  await expect(card.locator(".card-success")).toHaveCount(0);
+  await expect(page.locator(".success-toast")).toHaveCount(0);
+});
+
+test("old daily dedup markers are preserved but do not suppress confirmed confetti; preview never writes data", async ({
+  page,
+}, info) => {
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+  const api = await backend(page);
+  await page.goto("./");
+  await login(page);
+  const marker = await page.evaluate(() => {
+    const key = `daily-progress:${location.pathname}:browser-check.supabase.co:00000000-0000-0000-0000-000000000001:session-policy:all-completed:2026-10-11`;
+    localStorage.setItem(key, "1");
+    return key;
+  });
+  const card = habitCard(page, "阅读");
+  await expect(card).toBeVisible();
+  await card.getByRole("button", { name: "打卡", exact: true }).click();
+  await expect(page.locator(".all-celebration")).toContainText(
+    "今天的目标全部完成！🌱",
+  );
+  await expect(page.locator(".confetti-field i")).toHaveCount(22);
+  expect(
+    await page
+      .locator(".confetti-field i")
+      .first()
+      .evaluate((el) => getComputedStyle(el).animationName),
+  ).toBe("confetti-fall");
+  expect(await page.evaluate((key) => localStorage.getItem(key), marker)).toBe(
+    "1",
+  );
+  await page.screenshot({
+    path: test.info().outputPath(`confetti-${info.project.name}.png`),
+    fullPage: false,
+  });
+  await page.clock.runFor(2200);
+  await page.reload();
+  await expect(card).toBeVisible();
+  await expect(page.locator(".celebration-layer")).toHaveCount(0);
+  const writes = api.writes();
+  const keysBefore = await page.evaluate(() =>
+    Object.keys(localStorage).sort(),
+  );
+  await page.getByRole("button", { name: "账号", exact: true }).click();
+  await page
+    .getByRole("button", { name: "预览庆祝效果（不会打卡）", exact: true })
+    .click();
+  await expect(page.locator(".success-toast")).toContainText(
+    "效果预览 · 不会打卡或保存数据",
+  );
+  await expect(page.locator(".success-toast")).not.toContainText(
+    "已保存到云端",
+  );
+  expect(api.writes()).toBe(writes);
+  expect(await page.evaluate(() => Object.keys(localStorage).sort())).toEqual(
+    keysBefore,
+  );
+  await page.clock.runFor(2200);
+  await expect(page.locator(".celebration-layer")).toHaveCount(0);
+});
+
+test("refresh seeing committed data before write acknowledgements cannot swallow or prematurely trigger celebration", async ({
+  page,
+}) => {
+  const api = await backend(page, twoHabits());
+  await page.goto("./");
+  await login(page);
+  const reading = habitCard(page, "阅读");
+  const exercise = habitCard(page, "运动");
+  await expect(reading).toBeVisible();
+  api.holdWrite("reading", true);
+  api.holdWrite("exercise", true);
+  await reading.getByRole("button", { name: "打卡", exact: true }).click();
+  await exercise.getByRole("button", { name: "打卡", exact: true }).click();
+  await expect
+    .poll(() => api.snapshot.checkins.filter((c) => c.date === today).length)
+    .toBe(2);
+  await page.getByRole("button", { name: "刷新", exact: true }).click();
+  await expect(
+    page.getByRole("button", { name: "刷新", exact: true }),
+  ).toBeEnabled();
+  await expect(page.locator(".celebration-layer")).toHaveCount(0);
+  api.releaseWrite("reading");
+  await expect(reading.locator(".card-success strong")).toHaveText(
+    "完成啦！✨",
+  );
+  await expect(page.locator(".all-celebration")).toHaveCount(0);
+  api.releaseWrite("exercise");
+  await expect(exercise.locator(".card-success strong")).toHaveText(
+    "完成啦！✨",
+  );
+  await expect(page.locator(".all-celebration")).toContainText(
+    "今天的目标全部完成！🌱",
+  );
+  expect(api.writes()).toBe(2);
 });

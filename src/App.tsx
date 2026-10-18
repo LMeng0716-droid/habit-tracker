@@ -1,7 +1,10 @@
+import { CelebrationFeedback, StarParticles } from "./CelebrationFeedback";
+import { useCelebrations } from "./useCelebrations";
+import { celebrationFor } from "./celebrations";
+import { PREVIEW_BASE } from "./preview";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Startup } from "./Startup";
 import {
-  allCompleted,
   applyCheckin,
   optimisticSnapshot,
   type CheckinOperations,
@@ -54,9 +57,13 @@ export default function App() {
     promise: Promise<boolean>;
     controller: AbortController;
   } | null>(null);
-  const [celebrating, setCelebrating] = useState<Record<string, number>>({});
-  const [allCelebration, setAllCelebration] = useState(false);
-  const celebratedDays = useRef(new Set<string>());
+  const {
+    celebrating,
+    feedback,
+    play: playCelebration,
+    clearHabit: clearCelebration,
+    reset: resetCelebrations,
+  } = useCelebrations();
   const [authInitError, setAuthInitError] = useState("");
   const updateOperations = useCallback((value: CheckinOperations) => {
     operationsRef.current = value;
@@ -70,10 +77,8 @@ export default function App() {
     readFlight.current?.controller.abort();
     readFlight.current = null;
     updateOperations({});
-    setCelebrating({});
-    setAllCelebration(false);
-    celebratedDays.current.clear();
-  }, [updateOperations]);
+    resetCelebrations();
+  }, [updateOperations, resetCelebrations]);
   useEffect(
     () => () => {
       for (const controller of writeControllers.current.values())
@@ -82,16 +87,6 @@ export default function App() {
     },
     [],
   );
-  useEffect(() => {
-    if (!Object.keys(celebrating).length) return;
-    const timer = window.setTimeout(() => setCelebrating({}), 600);
-    return () => clearTimeout(timer);
-  }, [celebrating]);
-  useEffect(() => {
-    if (!allCelebration) return;
-    const timer = window.setTimeout(() => setAllCelebration(false), 1800);
-    return () => clearTimeout(timer);
-  }, [allCelebration]);
   const [fresh, setFresh] = useState(false);
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -432,6 +427,7 @@ export default function App() {
       return;
     const owner = account.current;
     const epoch = accountEpoch.current;
+    const startedSnapshot = confirmed.current;
     const sequence = ++operationSequence.current;
     const controller = new AbortController();
     writeControllers.current.set(habitId, controller);
@@ -440,12 +436,7 @@ export default function App() {
       ...operationsRef.current,
       [habitId]: { sequence, habitId, date, completed, status: "saving" },
     });
-    setCelebrating((previous) => {
-      const next = { ...previous };
-      delete next[habitId];
-      return next;
-    });
-    setAllCelebration(false);
+    clearCelebration(habitId, !completed);
     setNotice("");
     setError("");
     const current = () =>
@@ -469,28 +460,31 @@ export default function App() {
       setNotice(
         completed ? "完成啦 ✨ 已保存到云端。" : "已取消打卡并保存到云端。",
       );
-      if (completed && date === after.today && date === businessDate()) {
-        setCelebrating((previous) => ({ ...previous, [habitId]: sequence }));
-        const marker = `${policyKey(import.meta.env.BASE_URL, projectUrl, owner)}:all-completed:${date}`;
-        let previouslyCelebrated = celebratedDays.current.has(date);
-        try {
-          previouslyCelebrated ||= localStorage.getItem(marker) === "1";
-        } catch {
-          /* Memory fallback when storage is unavailable. */
-        }
-        if (
-          !allCompleted(before) &&
-          allCompleted(after) &&
-          !previouslyCelebrated
-        ) {
-          celebratedDays.current.add(date);
-          try {
-            localStorage.setItem(marker, "1");
-          } catch {
-            /* Does not affect cloud saving. */
-          }
-          setAllCelebration(true);
-        }
+      const celebration = celebrationFor(
+        startedSnapshot,
+        after,
+        habitId,
+        date,
+        completed,
+        businessDate(),
+      );
+      if (celebration.ordinary) {
+        const card = document.querySelector(
+          `[data-habit-id="${CSS.escape(habitId)}"]`,
+        );
+        const dock =
+          card && card.getBoundingClientRect().top > window.innerHeight / 2
+            ? "top"
+            : "bottom";
+        playCelebration({
+          sequence,
+          habitId,
+          name: after.habits.find((h) => h.id === habitId)?.name ?? "习惯",
+          all:
+            celebration.all &&
+            !Object.values(next).some((op) => op.date === after.today),
+          dock,
+        });
       }
     } catch (e) {
       if (!current()) return;
@@ -776,17 +770,10 @@ export default function App() {
           刷新
         </button>
       </header>
+      {feedback && <CelebrationFeedback event={feedback} />}
       <main className="app">
         {error && <p role="alert">{error}</p>}
         {notice && <p role="status">{notice}</p>}
-        {allCelebration && (
-          <div className="all-celebration" role="status">
-            <span className="celebration-stars" aria-hidden="true">
-              ✦ 🌱 ✧
-            </span>
-            今天的目标全部完成！🌱
-          </div>
-        )}
         {loading && <p role="status">正在读取云端数据…</p>}
         {page === "account" ? (
           <section>
@@ -797,6 +784,24 @@ export default function App() {
             </p>
             <p>每天按北京时间计算。断网时无法保存。</p>
             <InstallHelp />
+            {(import.meta.env.DEV ||
+              import.meta.env.BASE_URL === PREVIEW_BASE) && (
+              <button
+                className="secondary"
+                disabled={busy || hasOperations}
+                onClick={() =>
+                  playCelebration({
+                    sequence: ++operationSequence.current,
+                    habitId: "preview",
+                    name: "",
+                    all: true,
+                    preview: true,
+                  })
+                }
+              >
+                预览庆祝效果（不会打卡）
+              </button>
+            )}
             <button disabled={busy} onClick={() => void logout()}>
               退出登录
             </button>
@@ -847,6 +852,7 @@ export default function App() {
                 return (
                   <article
                     key={h.id}
+                    data-habit-id={h.id}
                     className={`card color-${h.color} ${checked ? "completed" : ""} ${celebrating[h.id] ? "celebrate-confirmed" : ""}`}
                     aria-busy={operations[h.id]?.status === "saving"}
                   >
@@ -855,6 +861,12 @@ export default function App() {
                     </span>
                     <div className="habit-main">
                       <h3>{h.name}</h3>
+                      {celebrating[h.id] && (
+                        <span className="card-success" key={celebrating[h.id]}>
+                          <StarParticles />
+                          <strong>完成啦！✨</strong>
+                        </span>
+                      )}
                       <p>
                         {operations[h.id]?.status === "saving"
                           ? "正在保存 · "
@@ -873,7 +885,13 @@ export default function App() {
                       disabled={busy || !fresh || !!operations[h.id]}
                       onClick={() => void checkin(h.id, today, !checked)}
                     >
-                      {checked ? "✓" : "打卡"}
+                      <span
+                        className="check-glyph"
+                        key={celebrating[h.id] ?? "idle"}
+                        aria-hidden="true"
+                      >
+                        {checked ? "✓" : "打卡"}
+                      </span>
                     </button>
                     <details className="habit-actions">
                       <summary>更多操作</summary>
