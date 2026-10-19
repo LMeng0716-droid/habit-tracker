@@ -12,8 +12,8 @@ insert into habit_mobile.habits(user_id,id,name,color,created_date,habit_type,ta
 select '{uid}','perf-'||n,'volume fixture',0,{today}-1824,'duration',3,'minute' from generate_series(1,10) n;
 alter table habit_mobile.habits enable trigger guard_habit;
 alter table habit_mobile.progress_operations disable trigger guard_progress_v3;
-insert into habit_mobile.progress_operations(user_id,operation_id,habit_id,date,action,input_value,value_after,revision)
-select '{uid}',md5(h.id||d::text||r::text)::uuid,h.id,{today}-d,'add',1,r,r from habit_mobile.habits h cross join generate_series(0,1824) d cross join generate_series(1,3) r where h.user_id='{uid}';
+insert into habit_mobile.progress_operations(user_id,operation_id,event_id,event_kind,habit_id,date,action,input_value,occurred_at,expected_revision,revision)
+select '{uid}',md5(h.id||d::text||r::text)::uuid,md5(h.id||d::text||r::text)::uuid,'occurrence',h.id,{today}-d,'record',1,({today}-d)::timestamp at time zone 'Asia/Shanghai',0,1 from habit_mobile.habits h cross join generate_series(0,1824) d cross join generate_series(1,3) r where h.user_id='{uid}';
 alter table habit_mobile.progress_operations enable trigger guard_progress_v3;
 analyze habit_mobile.habits; analyze habit_mobile.progress_operations;
 """)

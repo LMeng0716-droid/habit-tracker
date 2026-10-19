@@ -4,10 +4,10 @@
 
 ## 需要用户明确批准
 
-- 接受 README 中的目标/单位不可变、三种模式及上限、Emoji 白名单、排序 CAS 和派生徽章撤回规则。
-- 接受一张不可变数值操作表+调用者权限视图，操作记录长期保留。
+- 接受 README 中的目标/单位不可变、类型、方向分离及上限、Emoji 白名单、排序 CAS 和派生徽章撤回规则。
+- 接受一张不可变事件修订表+调用者权限视图和日终确认交互，操作记录长期保留。
 - 修改原五个 RPC 以保护 Boolean 兼容；旧云端页面不显示数值习惯。
-- 接受新增八个业务 RPC 及 helper/触发器，保持 SECURITY INVOKER/RLS。
+- 接受新增十个业务 RPC 及 helper/触发器，保持 SECURITY INVOKER/RLS。
 - 确认独立测试项目、备份及恢复途径；先测试后另行决定真实应用数据库变更窗口。
 - 单独授权控制台 Data API 暴露配置；本轮未改设置。
 
@@ -30,9 +30,9 @@
 
 - 保留已有 `habit_mobile` 为 Exposed Schema；不要暴露 auth 或历史 habit_private。
 - 保留原 habits/habit_checkins 和五个旧 RPC 的现有暴露，不改 Auth/Site URL/Redirect URL。
-- 新业务 **Functions** 选择：create_habit_v3、edit_habit_v3、archive_habit_v3、record_progress_v3、reorder_habits_v3、read_snapshot_v3、read_summary_v3、read_streaks_v3。每个名字只应有一个签名，避免 PostgREST 重载歧义；SQL 已含 NOTIFY pgrst reload schema，必要时等待控制台 schema cache 刷新。
+- 新业务 **Functions** 选择：create_habit_v3、edit_habit_v3、archive_habit_v3、record_progress_v3、record_events_v3、read_events_v3、reorder_habits_v3、read_snapshot_v3、read_summary_v3、read_streaks_v3。每个名字只应有一个签名，避免 PostgREST 重载歧义；SQL 已含 NOTIFY pgrst reload schema，必要时等待控制台 schema cache 刷新。
 - 不把 require_user_v3 或 guard_* 当业务 RPC 暴露。require_user_v3 仍必须具有 authenticated EXECUTE 以便 INVOKER 函数内部调用；这不意味着必须给它一个 REST 入口。
-- **Tables/Views**：V3 前端方案全走 RPC，不需要公开 progress_operations 的表 REST 端点，也不必公开 habit_daily_progress 视图端点；推荐保持未暴露。内部 SQL 访问依靠已授予的输入列 INSERT/SELECT 和视图 SELECT，不依赖表是否有公开 REST 端点。如为了受控调试手动暴露，RLS/列权限仍必须有效，不能授予表级任意 INSERT/UPDATE/DELETE。
+- **Tables/Views**：V3 前端方案全走 RPC，不需要公开 progress_operations 的表 REST 端点，也不必公开 habit_events、habit_daily_progress、habit_goal_days 视图端点；推荐保持未暴露。内部 SQL 访问依靠已授予的输入列 INSERT/SELECT 和视图 SELECT，不依赖表是否有公开 REST 端点。如为了受控调试手动暴露，RLS/列权限仍必须有效，不能授予表级任意 INSERT/UPDATE/DELETE。
 - authenticated 已有 schema USAGE，新 RPC EXECUTE 由 SQL 精确授予；anon 不授表/函数；禁止为了修复 401/403 扩大 PUBLIC 权限。auth.uid() 和事务 advisory lock 目录函数权限必须在只读预检确认；如托管环境策略不同，先停止并审查，不通过 definer/高权限角色绕过。
 - 仅前端 Project URL + publishable key，真实 API 请求头指定 habit_mobile schema。禁止 service_role、secret key、数据库密码进入前端或仓库。
 
@@ -49,9 +49,9 @@
 
 `upgrade`：增加旧活跃/归档习惯、2024 闰年历史、迁移前快照；升级后逐列比较原身份/日期/时间/打卡，并验证历史汇总/徽章。另有 54,750 行数值日志体量探针。
 
-两个 runner 只能新建并清理自己标记的本地容器，不接受远程 DB URL。historical fixture 为模拟几年前自然产生的数据而短暂关闭两个本地触发器后立即重启；**从不关闭 RLS**，不是通过绕过被测安全检查制造成功；迁移本身无 DISABLE TRIGGER。安全和并发测试均在触发器恢复后执行。
+两个 runner 只能新建并清理自己标记的本地容器，不接受远程 DB URL。historical fixture 为模拟几年前自然产生的数据而短暂关闭有关本地触发器后立即重启；**从不关闭 RLS**，不是通过绕过被测安全检查制造成功；迁移本身无 DISABLE TRIGGER。安全和并发测试均在触发器恢复后执行。
 
-CI 在现有数据库工作流新增独立 empty/upgrade job；不执行远程 SQL。没有改 Pages 正式/预览部署流程。src 与前端行为完全不改，仍运行现有类型、格式、单元、浏览器和双 Base 构建。
+CI 在现有数据库工作流新增独立 empty/upgrade job；不执行远程 SQL。没有改 Pages 正式/预览部署流程。src 与前端行为完全不改，浏览器测试等待异步登录完成后才刷新，仍运行现有类型、格式、单元、浏览器和双 Base 构建。
 
 测试用 request.jwt.claim.sub 只是 PostgreSQL 策略输入，不模拟 JWT 签名/GoTrue/PostgREST、真实托管权限、邮件认证或 API 暴露设置。PG17 本地通过不能声称真实 Supabase 验证通过；PG15/16 兼容性由所用语法设计，不等于已运行对应版本。
 
@@ -61,11 +61,22 @@ CI 在现有数据库工作流新增独立 empty/upgrade job；不执行远程 S
 2. 未带 JWT、无效/过期 JWT 请求受保护对象必须拒绝；这一步不能用 SQL Editor SET ROLE/模拟 claim 代替。
 3. A 建 Boolean/Duration/Count 并自选 Emoji；旧客户端仍读 Boolean，V3 读三种模式；刷新/重新登录/另一设备读取相同 Emoji 和顺序。
 4. B 尝试 A 的习惯 ID/operation_id、排序列表、数值修正/读取，必须失败或看不到；相同 text habit ID 在 A/B 独立创建互不影响。检查视图与表端点（若暴露）也不能越权。
-5. 学习 +45/+105 =150，目标120达标；同操作 ID 重试仍150，换负载同 ID 报错；两个真实会话同时 +5/+15 累计准确；过期 revision 修正必须冲突，实际值不悄悄覆盖。
+5. 学习 +45/+105 =150，目标120达标；每次行为有独立event_id，保存occurred_at；同操作 ID 重试仍150，换负载同 ID 报错；两个真实会话同时 +5/+15 累计准确；指定event_id的过期 revision 修正必须冲突，实际值不悄悄覆盖。
 6. 两设备从同顺序提交不同目标，一笔成功另一笔冲突；归档/新增后旧 expected 列表不能遗漏习惯；失败后整组顺序保持，不出现部分更新。
-7. 归档后新数值命令/打卡/取消均拒绝，旧回执重放可读且不新增；归档当天历史仍在。历史日期/未来/负数/超大输入/非法 Unicode 和单位都拒绝，失败后命令和状态不留半笔。
+7. 归档后归档后日期的新数值事件以及Boolean打卡/取消均拒绝；数值习惯有效历史日期仍可修正和日终确认，旧回执重放可读且不新增；归档当天历史仍在。历史日期/未来/负数/超大输入/非法 Unicode 和单位都拒绝，失败后命令和状态不留半笔。
 8. 人工断网/响应丢失后，只复用原 operation_id 对账；退出重登后记录从云端恢复，不依赖本地旧数据。重新打开无未验证离线补写。
 9. 热力图：创建前、归档后、空账号日期为无数据；闰年、跨周跨年、午夜北京日期正确；量与完成数分开。今天的率注明未结束。
 10. 长期历史即使超过一年，最长连续/7/21/30 天达成日期正确；普通断签保留，修正历史依批准规则重算；读取不播放新成就动画。
 11. 实测默认/单习惯年度明细与 summary 响应大小/耗时；必要时检查 EXPLAIN、索引及项目限制，不能把本地耗时当网络 SLA。
 12. 保留测试结果，用户确认数据库验收通过后才启动阶段 3（Emoji/排序/数值 UI），最后阶段 4（热力图/趋势/徽章 UI）。不自动合并或部署。
+
+## 本轮新增人工验收（仍未执行）
+
+- 零食上限2：两个独立+1只提示记录成功/未超过上限，不庆祝；第三次超标；指定撤销第三次，回到待结算。
+- 北京午夜后，缺少确认仍unknown；确认完整后0/1/2次成功，3次超标；今天不可提前确认。次日补记/撤销历史事件后旧确认失效，重新确认才可达标。
+- 咖啡tracking_only：目标NULL，明细可见，不进入完成率、连续与徽章。
+- 刷新或换设备读取同一事件明细、撤销状态、修订历史；跨午夜事件拆分和日期修正用批次，两笔要么都写入要么全回滚。
+- 真实两设备同时新增不同事件总量正确；同时修正同一事件只能一笔成功；重复重试void不重复扣减。失败不显示成功庆祝。
+- Data API只额外选择上述10个业务Functions，新增日志和视图默认不暴露；不能把 authenticated 内部执行权限等同REST暴露。
+
+**当前 c2 旧草案从未授权执行。** 本修订保持同名 proposal，可在“只安装foundation”的项目直接评审。若任何项目已私下安装c2草案，不能覆盖重跑本文件：先运行只读catalog/计数，导出完整日志和旧函数定义，另行设计带旧操作→事件语义人工确认的升级。每日set日志无法无损推断原行为明细，绝不伪造事件或静默清空。

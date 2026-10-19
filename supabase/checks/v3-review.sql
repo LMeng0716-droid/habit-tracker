@@ -24,3 +24,15 @@ from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname='hab
 -- Exposed tables/functions are project Data API settings, not proven by grants.
 -- Read this result in combination with Dashboard's selected object exposure.
 select current_setting('pgrst.db_schemas',true) as postgrest_schema_setting_if_visible;
+
+-- Old add/set draft is incompatible with the event revision draft: stop if present.
+select column_name,data_type from information_schema.columns
+where table_schema='habit_mobile' and table_name='progress_operations'
+ and column_name in ('value_after','event_id','event_kind','occurred_at');
+select indexname,indexdef from pg_indexes where schemaname='habit_mobile';
+-- Catalog only: do not call write RPCs to probe permissions.
+select p.oid::regprocedure signature,
+ has_function_privilege('anon',p.oid,'EXECUTE') anonymous_execute,
+ has_function_privilege('authenticated',p.oid,'EXECUTE') client_execute
+from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+where n.nspname='habit_mobile' and p.proname in ('record_progress_v3','record_events_v3','read_events_v3');

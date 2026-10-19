@@ -1,110 +1,47 @@
-# 数据库审计和推荐模型
+# V3 阶段 2 数据模型修订（二次审批）
 
-## 现状（代码/迁移审计，非远程数据库现场审计）
+## 真实基线与审计范围
 
-`src/domain.ts` 的 Habit 为字符串 id、name、color、created_date、archived_on；Checkin 为 habit_id/date。parseSnapshot 忽略额外字段，全部现有统计只认识行存在即完成。`src/cloud.ts` 调用 habit_mobile 的五个 RPC。数据日期在前后端均固定 Asia/Shanghai；归档当天含在有效历史，归档后不能再打卡/撤销；未来/创建前日期不可写。Supabase 会话、7/30 天规则与认证键隔离不在本轮变更范围。
+代码基线 c2b32362；运行中的阶段 1 基于 3274c2e。只审查仓库 SQL，未查询真实 Supabase。基础 migration 为 `202610110001_mobile_cloud.sql`，两张业务表 habits、habit_checkins；五个 RPC 为 create_habit/edit_habit/archive_habit/set_checkin/read_snapshot。ID 是字符串；打卡唯一键为 user_id/habit_id/date；复合外键防止跨账号关联。触发器保护身份、北京时间日期、归档；两表 RLS + FORCE RLS，RPC 为调用者权限并限定空 search_path。TypeScript 仍是 Boolean Habit/Checkin/Snapshot，不在本阶段接入数值 UI。
 
-`202610110001_mobile_cloud.sql`：
+现有 Boolean 历史足够计算历年热力图、周/月率、连续与徽章，但没有数值、Emoji、顺序或行为时间。原提案每日 add/set 日志不能还原某一次行为，不能满足指定记录撤销，现已替换，尚未安装旧草案的项目不存在日志转换问题。
 
-| 对象 | 约束/权限 |
-|---|---|
-| habits | PK(user_id,id)，id text；user_id 默认 auth.uid()，FK auth.users；名称/颜色检查；日期/身份触发器不可修改；无客户端 DELETE |
-| habit_checkins | PK(user_id,habit_id,date)，复合 FK habits；仅 INSERT(habit_id,date)/DELETE，无 UPDATE |
-| 五个 RPC | create_habit、edit_habit、archive_habit、set_checkin、read_snapshot；SECURITY INVOKER、空 search_path、auth.uid() 校验 |
-| 两个触发器 | guard_habit / guard_checkin；所有者、日期、归档检查；父习惯行锁 |
-| RLS | 两表 ENABLE/FORCE，authenticated 仅自己记录，anon 无表或 RPC 权限 |
-| 历史读取 | read_snapshot 单条 SQL 的一致快照，返回全部记录，未限当月；每次读取的数据量随历史线性增长 |
+## 推荐模型与替代方案
 
-旧 001/002 是不同 schema 的复杂同步方案，不是本轮基础，也不能作为安装前置。真实项目的对象/所有者/授权是否和源代码相同，必须由用户执行只读检查确认。
+| 方案                                            | 成本与复杂度                                                | 明细和审计                                                   | 结论                       |
+| ----------------------------------------------- | ----------------------------------------------------------- | ------------------------------------------------------------ | -------------------------- |
+| 统一数值事件：一行为一 event_id，记录其修订版本 | 一张追加表、最新事件及每日聚合视图；客户端持有事件 revision | 可以还原每次行为和全部修正；重试 operation_id 与行为 ID 分离 | 推荐，手机端长期使用最清晰 |
+| 每日数值进度命令 add/set                        | 初期简单；指定事件撤销需要反向增量、引用、CAS 和额外映射    | 只能解释每日总数；set 会抹去行为归属，后续补丁越来越复杂     | 不采用                     |
+| 可变事件表 + 独立命令回执/审计表                | 至少两张新表，多处原子写入                                  | 清晰但维护两份状态，体量及权限面更大                         | 当前没有必要               |
 
-## 哪些功能需要扩展
+**落地是逻辑上独立的行为事件、物理上不可变的事件修订日志**，不是把每日累计命令改个名字。progress_operations 每行是一条对某事件的不可变命令回执；event_id 稳定标识行为，operation_id 稳定标识一次提交。habit_events 取每事件最新版本，可还原明细；habit_daily_progress 仅汇总最新且未 void 的 occurrence。没有另一份可写总量，避免双重真相。
 
-| 功能 | 现有数据是否足够 |
-|---|---|
-| Boolean 年度热力图、周月完成率/趋势 | 足够，需统一有效日期与无数据规则 |
-| 7/21/30 天派生徽章 | 足够计算历史成就；不够记录删除证据后仍不可撤销的解锁事件 |
-| Emoji | 不够，增加 emoji 独立列 |
-| 跨设备排序 | 不够，增加 sort_order 与原子批量 RPC |
-| 学习分钟/次数、修正与重试 | 不够，需不可变数值命令及每日最新状态 |
+## 字段与关系
 
-## 方案比较
+habits 新增 emoji（默认🌱）、sort_order（bigint）、habit_type（boolean/duration/count）、goal_direction（at_least/at_most/tracking_only）、target（integer，可空）、unit。旧行默认 Boolean + at_least +1 +completion，原列原值和时间戳不 UPDATE 回填。类型、方向、目标、单位创建后不可改，需归档新建以免重解释历史。
 
-| 方案 | 优点 | 成本/风险 | 决策 |
-|---|---|---|---|
-| A. 扩展 habit_checkins 为 value 行 | 少一张进度表 | 行存在不再等于完成，旧客户端会把部分进度当完成；旧 DELETE 可删除数值历史；仍需幂等回执 | 不选 |
-| B. 每日进度实体表 + 独立回执表 | 每日一行，读取直观 | 数值状态与回执需要维护两份一致性，增加两张表；必须事务更新 | 备选 |
-| C. 保留 Boolean 表，数值操作日志兼作不可变回执，视图取每日最后版本 | 原表历史不改；只有一个数值真源；并发/重试/审计同一条 INSERT；无额外角色或 definer | 日志比每日表大，不能随意清理；需新客户端/API | **推荐** |
+- Boolean 固定 at_least/1/completion，仍只用原 habit_checkins。
+- Duration 整数分钟，Count 整数次数，单位只允许 minute/repetition；每次及每日总量上限分别 1440/1000000，防负数、非整数、溢出。达到上限后仍可撤销/向下修正。
+- at_least 目标必须为正；at_most 可为零；tracking_only 目标必须 NULL。记录值与方向完全分离。
+- Emoji 只接受十个精确 Unicode 预设，不接受 HTML/控制字符/任意组合，默认🌱。这是有限选择，并非任意 Emoji 编辑器。
+- 排序新习惯追加 max+1024，旧 rank=0 用 created_at/id 稳定排序；归档保留原 rank，不在活跃拖拽集合。完整 ID 列表 CAS（最多500）原子更新，冲突提示重新读取并回滚拖拽，不静默覆盖。
 
-日志是受范围限制的业务数值命令，不是设备同步日志：没有同步游标、订阅、离线队列、冲突合并框架或设备注册。
+progress_operations：user_id、operation_id（用户内主键）、event_id、event_kind（occurrence/day_confirmation）、habit_id（复合用户外键）、date、action（record/revise/void）、input_value、occurred_at（行为时间）、expected_revision、revision、created_at（服务器接收时间）、confirmed_revisions（服务器生成的当日event_id→revision完整映射，仅确认行使用）。唯一(user_id,event_id,revision)，一日只允许一个逻辑 confirmation，后续用 revise 重新确认。
 
-```mermaid
-erDiagram
-  AUTH_USERS ||--o{ HABITS : owns
-  HABITS ||--o{ HABIT_CHECKINS : boolean_only
-  HABITS ||--o{ PROGRESS_OPERATIONS : numeric_only
-  PROGRESS_OPERATIONS }o--|| DAILY_PROGRESS_VIEW : grouped_by_day
-  HABITS {
-    uuid user_id PK
-    text id PK
-    text emoji
-    bigint sort_order
-    text habit_type
-    int target
-    text unit
-  }
-  HABIT_CHECKINS {
-    uuid user_id PK
-    text habit_id PK
-    date date PK
-  }
-  PROGRESS_OPERATIONS {
-    uuid user_id PK
-    uuid operation_id PK
-    text habit_id FK
-    date date
-    text action
-    bigint input_value
-    bigint expected_revision
-    int value_after
-    bigint revision
-  }
-```
+record 创建 revision1；revise 精确修正指定事件值/同日发生时间；void 撤销指定事件，必须回传该事件当前值/时间和revision，不能借撤销改写载荷，也不能复活已撤销事件。所有旧版本保留，明细默认展示最新未撤销行为，审计页可查看所有版本和撤销状态。日期/habit/kind 不能在一个 event_id 上变更；日期修正必须用批量 RPC 原子 void 旧事件+record 新事件，保留两条之间的批量回执供客户端解释。没有服务器批次 ID 字段，前端需持有该批请求操作 ID 列表；跨会话审计只能逐条看到原始回执，不能声称已有持久批次关联。
 
-DAILY_PROGRESS_VIEW 是 security_invoker 视图，不存第二份数据。
+## 日期、零值与完整性确认
 
-## 字段、边界与历史
+全部业务日期固定 Asia/Shanghai（UTC+8），不跟随手机时区；occurred_at 为有时区绝对时间，date 必须与其北京日期一致，不允许未来时间、创建前或归档后日期。跨午夜的计时需按北京午夜拆成两条事件，以批量事务保存；本阶段不实现后台计时器。数字习惯归档后允许对有效历史日期修正/补充/确认，不能记录归档后的日期；旧 Boolean 归档仍只读，兼容原规则。
 
-habits 新列：
+零次行为没有 occurrence 行。**没有行不等于确认零次**：过去 at_most 没有确认时为 unknown，不奖励自动成功，也不当失败。用户需在日期结束后确认该日记录完整（day_confirmation，值0）；此时无行为才代表明确零次。今天不能确认日终。记录或撤销/修正行为会改变最新事件版本映射，使旧确认失效，必须重新确认。确认比较精确JSON版本集合，不依赖设备时钟、数据库时间戳精度或服务器时钟回拨来判断先后。追补历史是用户声明，不是服务器对真实行为的证明。
 
-- emoji text NOT NULL DEFAULT 🌱；允许 🌱 📚 💧 🏃 🌙 🎨 🧘 🍎 🧹 ✨。精确 Unicode 白名单避开“字符串长度=可见字符数”的错误；拒绝组合变体、肤色/性别组合、空串、控制符、非法文本及 HTML，不静默截断。客户端只能发送面板值；将来扩展白名单需迁移。
-- sort_order bigint NOT NULL DEFAULT 0，0..10^12。旧行全部为 0，按 sort_order,created_at,id 稳定排序，旧顺序不变；不回写归档行、不改创建时间。新增在所有旧 rank 的 max+1024 末尾；批量重排只改活跃行，归档 rank 保留。重复 rank 合法，有确定性 tie-break；没有容易中途冲突的 UNIQUE(rank)。
-- habit_type：boolean/duration/count；target 整数；unit 受类型联合 CHECK 约束。Boolean 固定 1/completion，Duration 1..1440/minute，Count 1..1000000/repetition。实际量可超过目标，但不超过类型上限，UI 进度最多 100%，实际值不截断。
-- 类型、目标、单位创建后固定。否则没有进度行的历史日期也会受目标变更影响，仅给已有行保存 target 快照还不足以还原所有计划。第一版通过归档+新习惯明确变更，不增加目标历史表；后续需要编辑目标再设计按生效日期的目标历史。若当天归档并新建，两项按现有规则都计入当天分母；建议次日创建替代，或明确接受这是两项独立任务，不宣称无缝更改同一习惯目标。
+今天 at_most 未超过目标为 within_limit_pending；超过为 exceeded，绝不提前庆祝。北京次日0点以后，低于上限且确认完整才 completed。无需午夜定时写库，读取依据服务器 statement_timestamp 分类。tracking_only 只记录，没有成功/失败目标。
 
-progress_operations：PK(user_id,operation_id)，UNIQUE(user_id,habit_id,date,revision)，复合 FK habits。command 输入仅 operation_id/habit_id/date/action/input_value/expected_revision；value_after/revision/created_at 全由触发器产生，客户端不能提交或修改，表无 UPDATE/DELETE。某日没有命令视为实际 0/版本 0；set 0 仍保留修正事件。
+## 并发、安全与保留
 
-habit_daily_progress 取每组最大 revision。Boolean 完成只读 habit_checkins；Duration/Count 完成只读此视图的 actual_value>=habit.target。两个写入口互相拒绝错误模式，因此不存在同一习惯同时有两种完成真源。
+所有新表 RLS/FORCE RLS，视图 security_invoker；authenticated 仅 SELECT 与输入列 INSERT，禁止日志 UPDATE/DELETE，用户/版本/接收时间由触发器生成。原始输入列 INSERT 也必须经过相同校验。无 SECURITY DEFINER、新角色、owner 变更、Auth 授权或 RLS 绕过。业务 RPC 九个，只有 authenticated 可执行。
 
-## 原子性、幂等与并发
+每用户事务 advisory lock 串行化写入（非全局锁），两个新增独立 event 可相加不丢失；同一 event 修正用 expected_revision，失败40001；operation_id 同载荷重试返回原回执，不同载荷报错，归档后的原回执也可重读。批量1–100条同事务，任一失败全回滚；客户端网络重试必须保留相同 operation_id/event_id/时间/值，不能重生 ID 导致重复+1。
 
-- 所有新写 RPC 和触发器使用 auth.uid()，先取得每用户事务 advisory lock，再锁所需习惯；不使用客户端 user_id。哈希碰撞最多导致额外等待，不影响身份隔离。锁只是串行化工具，RLS/显式 owner 条件才是权限边界。
-- add：正整数增量，在锁内取最新值后累加；两个设备 +5 和 +15 最终 +20。set：非负整数修正，必须给当前 expected_revision；过期时 40001/revision_conflict，回读后让用户确认，不能静默覆盖。
-- 同 operation_id+同负载返回最初回执，不再累计；相同 ID 不同负载报 operation_id_reused。两个账号可独立使用相同 UUID。原回执可能早于后续操作，因此 **重试回执不是最新快照**，客户端必须比较 revision 或回读，不能把旧回执覆盖到新状态。
-- 数值命令、计算结果、操作回执就是同一不可变行，事务异常全部回滚；没有双写不同步窗口。直接 INSERT 受同一触发器规则及列权限限制，不能伪造回执。
-- 排序使用当前完整活跃 ID 列表作为 expected，验证无重复、全属当前账号、恰好覆盖活跃集合；最多 500 项。一次 UPDATE 原子提交。新增/归档/别人改顺序会使旧 expected 冲突；同目标已在服务器可安全返回 unchanged。它是“值 CAS”，不是事件版本，不保证检测 A→B→A 的 ABA；最终值相同的 ABA 不造成排序覆盖不同当前值。
-- 保留旧客户端所需 habits UPDATE，故原始表接口仍能改自己合法的 name/color/emoji/rank；RLS 不能代替业务协议。新客户端只使用排序 RPC 来获得整组 CAS/原子保证，原始独立 rank 修改不具有此承诺。排序重复值仍稳定可读。
-- SQL 直连客户端若自行倒置锁顺序（先 raw UPDATE、后 RPC）可能触发死锁，数据库会回滚其中一笔；正式 API 事务统一先按账号锁定。40001/40P01 都应先回读，不盲目重复数值增量。
-
-## 安全权限
-
-全部函数 SECURITY INVOKER、search_path=''，表 RLS/FORCE RLS；视图 security_invoker=true（要求 PG15+）。无新角色、ALTER OWNER、Auth GRANT OPTION、SECURITY DEFINER 或服务端密钥。
-
-authenticated 仅增加 habits 的 INSERT(emoji,habit_type,target,unit)、UPDATE(emoji,sort_order)；日志 SELECT 和输入列 INSERT；视图 SELECT；八个新业务 RPC 及内部 require_user_v3 的 EXECUTE。内部 helper 仅校验自己身份/取自己锁，无跨用户参数；无需作为 Data API 函数暴露。三个 guard 触发器函数不开放客户端 EXECUTE。anon/PUBLIC 无新对象权限。
-
-默认原表权限/RLS 不放宽到其他用户。触发器再次检查归属/模式/日期/归档。SQL 注入无动态用户 SQL；标识按 text 参数使用，所有对象完整限定 schema。真实 JWT 签名验证仍由 Supabase Auth/PostgREST 完成，模拟 claim 不能验证这层。
-
-### 排序字段候选比较
-
-整数/Bigint 连续 rank 易于用一次 RPC 重排，个人习惯通常几十项，更新成本可控；本草案选有界 bigint。浮点/分数 rank 能少改行，但会出现精度/间隙耗尽与重归一化问题。链表前后指针会引入断链/环与并发修复，本项目不采用。排序是用户自己的全局活跃列表，不引入分类局部排序或设备专属顺序。
-
-Duration 第一版是用户明确提交的整数分钟累计，不是后台运行的计时器；不会把页面关闭期间的时间自动记入云端。未来若增加运行中计时器，需另审开始/暂停/结束和休眠边界，不把它混入本次数据库审批。
+日志长期保留支持幂等与审计。事件量按每习惯每天10次估计，10习惯一年36500条；旧体量探针仍测54750条。年度摘要最多366行，不应下载完整命令日志。明细需按习惯/日期查询（本草案 read_snapshot_v3 只返回年度聚合，不返回全量事件；历史明细由 read_events_v3 有界分页读取）。尚无压缩或清理计划，真实项目需测 EXPLAIN 与长期增长。

@@ -16,40 +16,51 @@ alter table habit_mobile.habits
   add column emoji text not null default '🌱' check(emoji in ('🌱','📚','💧','🏃','🌙','🎨','🧘','🍎','🧹','✨')),
   add column sort_order bigint not null default 0 check(sort_order between 0 and 1000000000000),
   add column habit_type text not null default 'boolean',
-  add column target integer not null default 1,
+  add column goal_direction text not null default 'at_least',
+  add column target integer default 1,
   add column unit text not null default 'completion',
   add constraint habit_mode_target check(
-    (habit_type='boolean' and target=1 and unit='completion') or
-    (habit_type='duration' and target between 1 and 1440 and unit='minute') or
-    (habit_type='count' and target between 1 and 1000000 and unit='repetition'));
+    (habit_type='boolean' and goal_direction='at_least' and target is not null and target=1 and unit='completion') or
+    (habit_type in ('duration','count') and
+      ((habit_type='duration' and unit='minute') or (habit_type='count' and unit='repetition')) and
+      ((goal_direction='tracking_only' and target is null) or
+       (goal_direction='at_least' and target is not null and target between 1 and case when habit_type='duration' then 1440 else 1000000 end) or
+       (goal_direction='at_most' and target is not null and target between 0 and case when habit_type='duration' then 1440 else 1000000 end))));
 -- No UPDATE backfill: archived rows/identity timestamps/checkins remain intact.
 -- Existing zero ranks use created_at,id as deterministic ties, preserving order.
+-- Independent logical events, stored as append-only revisions. Operation UUIDs are
+-- retry receipts, event UUIDs identify the behavior being corrected/voided.
 create table habit_mobile.progress_operations (
   user_id uuid not null default auth.uid(),
   operation_id uuid not null,
+  event_id uuid not null,
+  event_kind text not null check(event_kind in ('occurrence','day_confirmation')),
   habit_id text not null,
   date date not null,
-  action text not null check(action in ('add','set')),
-  input_value bigint not null check(input_value between 0 and 1000000),
-  expected_revision bigint check(expected_revision between 0 and 9007199254740991),
-  value_after integer not null check(value_after between 0 and 1000000),
+  action text not null check(action in ('record','revise','void')),
+  input_value integer not null check(input_value between 0 and 1000000),
+  occurred_at timestamptz not null,
+  expected_revision bigint not null check(expected_revision between 0 and 9007199254740990),
   revision bigint not null check(revision between 1 and 9007199254740991),
   created_at timestamptz not null default clock_timestamp(),
+  confirmed_revisions jsonb, -- server-produced exact event->revision map, not client writable
   primary key(user_id,operation_id),
-  unique(user_id,habit_id,date,revision),
+  unique(user_id,event_id,revision),
   foreign key(user_id,habit_id) references habit_mobile.habits(user_id,id) on delete restrict,
-  check((action='add' and input_value>0 and expected_revision is null) or
-        (action='set' and expected_revision is not null))
+  check((action='record' and expected_revision=0) or (action in ('revise','void') and expected_revision>0))
 );
-create index progress_latest on habit_mobile.progress_operations(user_id,habit_id,date,revision desc) include(value_after);
+create index progress_latest on habit_mobile.progress_operations(user_id,event_id,revision desc);
+create index progress_day on habit_mobile.progress_operations(user_id,habit_id,date,created_at);
+-- Only one logical confirmation per habit/day, revised to reconfirm after edits.
+create unique index one_confirmation on habit_mobile.progress_operations(user_id,habit_id,date)
+  where event_kind='day_confirmation' and revision=1;
 alter table habit_mobile.progress_operations enable row level security;
 alter table habit_mobile.progress_operations force row level security;
 create policy own_read on habit_mobile.progress_operations for select to authenticated using((select auth.uid())=user_id);
 create policy own_insert on habit_mobile.progress_operations for insert to authenticated with check((select auth.uid())=user_id);
 revoke all on habit_mobile.progress_operations from public,anon,authenticated;
 grant select on habit_mobile.progress_operations to authenticated;
--- Only command inputs are writable. Trigger assigns the immutable result/receipt.
-grant insert(operation_id,habit_id,date,action,input_value,expected_revision) on habit_mobile.progress_operations to authenticated;
+grant insert(operation_id,event_id,event_kind,habit_id,date,action,input_value,occurred_at,expected_revision) on habit_mobile.progress_operations to authenticated;
 
 create function habit_mobile.require_user_v3() returns uuid
 language plpgsql security invoker set search_path='' as $$
@@ -74,7 +85,7 @@ begin
   else
     if old.archived_on is not null then raise exception 'habit_archived'; end if;
     if new.user_id<>old.user_id or new.id<>old.id or new.created_date<>old.created_date or new.created_at<>old.created_at then raise exception 'immutable_identity'; end if;
-    if new.habit_type<>old.habit_type or new.target<>old.target or new.unit<>old.unit then raise exception 'immutable_mode_target'; end if;
+    if new.habit_type<>old.habit_type or new.target is distinct from old.target or new.goal_direction<>old.goal_direction or new.unit<>old.unit then raise exception 'immutable_mode_target'; end if;
     if new.archived_on is not null and new.archived_on<>today then raise exception 'invalid_archive_date'; end if;
   end if;
   return new;
@@ -98,53 +109,72 @@ end $$;
 create function habit_mobile.guard_progress_v3() returns trigger
 language plpgsql security invoker set search_path='' as $$
 declare uid uuid; h habit_mobile.habits%rowtype; receipt habit_mobile.progress_operations%rowtype;
-        prior bigint:=0; ver bigint:=0; result bigint; maximum bigint;
+        prior habit_mobile.progress_operations%rowtype; maximum integer;
+        today date:=(clock_timestamp() at time zone 'Asia/Shanghai')::date;
 begin
   uid:=habit_mobile.require_user_v3();
   if new.user_id<>uid then raise exception using errcode='42501',message='authentication_required'; end if;
-  if new.operation_id is null then raise exception 'operation_id_required'; end if;
   select * into receipt from habit_mobile.progress_operations where user_id=uid and operation_id=new.operation_id;
   if found then
-    if receipt.habit_id is distinct from new.habit_id or receipt.date is distinct from new.date or receipt.action is distinct from new.action or receipt.input_value is distinct from new.input_value or receipt.expected_revision is distinct from new.expected_revision then raise exception 'operation_id_reused'; end if;
-    return null; -- Identical retry: RPC reads the original immutable receipt.
+    if row(receipt.event_id,receipt.event_kind,receipt.habit_id,receipt.date,receipt.action,receipt.input_value,receipt.occurred_at,receipt.expected_revision)
+       is distinct from row(new.event_id,new.event_kind,new.habit_id,new.date,new.action,new.input_value,new.occurred_at,new.expected_revision) then raise exception 'operation_id_reused'; end if;
+    return null;
   end if;
   select * into h from habit_mobile.habits where user_id=uid and id=new.habit_id for update;
   if h.id is null then raise exception 'habit_not_found'; end if;
   if h.habit_type='boolean' then raise exception 'boolean_checkin_required'; end if;
-  if h.archived_on is not null then raise exception 'habit_archived'; end if;
-  if new.date is null or new.date<h.created_date or new.date>(clock_timestamp() at time zone 'Asia/Shanghai')::date then raise exception 'date_not_eligible'; end if;
+  if h.archived_on is not null and new.date>h.archived_on then raise exception 'habit_archived'; end if;
+  if new.date<h.created_date or new.date>today or new.date is null or new.occurred_at is null or
+     (new.occurred_at at time zone 'Asia/Shanghai')::date<>new.date or new.occurred_at>clock_timestamp() then raise exception 'date_not_eligible'; end if;
   maximum:=case when h.habit_type='duration' then 1440 else 1000000 end;
-  select value_after,revision into prior,ver from habit_mobile.progress_operations
-    where user_id=uid and habit_id=h.id and date=new.date order by revision desc limit 1;
-  prior:=coalesce(prior,0); ver:=coalesce(ver,0);
-  if new.input_value is null or new.input_value<0 or new.input_value>maximum then raise exception 'value_out_of_range'; end if;
-  if new.action='add' and new.input_value>0 and new.expected_revision is null then result:=prior+new.input_value;
-  elsif new.action='set' and new.expected_revision=ver then result:=new.input_value;
-  elsif new.action='set' then raise exception using errcode='40001',message='revision_conflict';
-  else raise exception 'invalid_progress_action'; end if;
-  if result>maximum then raise exception 'value_out_of_range'; end if;
-  if ver>=9007199254740991 then raise exception 'revision_limit'; end if;
-  new.value_after:=result::integer; new.revision:=ver+1; new.created_at:=clock_timestamp();
+  if new.event_kind='occurrence' then
+    if new.input_value is null or new.input_value<1 or new.input_value>maximum then raise exception 'value_out_of_range'; end if;
+  elsif new.event_kind='day_confirmation' then
+    if h.goal_direction<>'at_most' or new.input_value<>0 or new.date>=today then raise exception 'closed_day_confirmation_required'; end if;
+  else raise exception 'invalid_event_kind'; end if;
+  select * into prior from habit_mobile.progress_operations where user_id=uid and event_id=new.event_id order by revision desc limit 1;
+  if not found then
+    if new.action<>'record' or new.expected_revision<>0 then raise exception using errcode='40001',message='event_revision_conflict'; end if;
+    new.revision:=1;
+  else
+    if prior.habit_id<>new.habit_id or prior.date<>new.date or prior.event_kind<>new.event_kind then raise exception 'immutable_event_identity'; end if;
+    if new.action not in ('revise','void') or new.expected_revision<>prior.revision or prior.action='void' then raise exception using errcode='40001',message='event_revision_conflict'; end if;
+    if new.action='void' and (new.input_value<>prior.input_value or new.occurred_at<>prior.occurred_at) then raise exception 'void_payload_mismatch'; end if;
+    new.revision:=prior.revision+1;
+  end if;
+  if new.event_kind='occurrence' and new.action<>'void' and
+    (select coalesce(sum(input_value::bigint),0) from habit_mobile.habit_events where user_id=uid and habit_id=h.id and date=new.date and event_id<>new.event_id and event_kind='occurrence' and action<>'void')+new.input_value>maximum then raise exception 'daily_value_out_of_range'; end if;
+  new.confirmed_revisions:=null;
+  if new.event_kind='day_confirmation' and new.action<>'void' then
+    select coalesce(jsonb_object_agg(event_id::text,revision),'{}'::jsonb) into new.confirmed_revisions
+      from habit_mobile.habit_events where user_id=uid and habit_id=h.id and date=new.date and event_kind='occurrence';
+  end if;
+  new.created_at:=clock_timestamp();
   return new;
 end $$;
 revoke all on function habit_mobile.guard_progress_v3() from public,anon,authenticated;
 create trigger guard_progress_v3 before insert on habit_mobile.progress_operations for each row execute function habit_mobile.guard_progress_v3();
+create view habit_mobile.habit_events with(security_invoker=true) as
+ select distinct on(user_id,event_id) * from habit_mobile.progress_operations order by user_id,event_id,revision desc;
 create view habit_mobile.habit_daily_progress with(security_invoker=true) as
-  select distinct on(user_id,habit_id,date) user_id,habit_id,date,value_after as actual_value,revision
-  from habit_mobile.progress_operations order by user_id,habit_id,date,revision desc;
-revoke all on habit_mobile.habit_daily_progress from public,anon,authenticated;
-grant select on habit_mobile.habit_daily_progress to authenticated;
--- New public columns only, never identity/time/result columns.
-grant insert(emoji,habit_type,target,unit) on habit_mobile.habits to authenticated;
+ select user_id,habit_id,date,
+   coalesce(sum(input_value::bigint) filter(where event_kind='occurrence' and action<>'void'),0) actual_value,
+   count(*) filter(where event_kind='occurrence' and action<>'void') event_count,
+   coalesce(((jsonb_agg(confirmed_revisions) filter(where event_kind='day_confirmation' and action<>'void'))->0) =
+     coalesce(jsonb_object_agg(event_id::text,revision) filter(where event_kind='occurrence'),'{}'::jsonb),false) confirmed
+ from habit_mobile.habit_events group by user_id,habit_id,date;
+revoke all on habit_mobile.habit_events,habit_mobile.habit_daily_progress from public,anon,authenticated;
+grant select on habit_mobile.habit_events,habit_mobile.habit_daily_progress to authenticated;
+grant insert(emoji,habit_type,goal_direction,target,unit) on habit_mobile.habits to authenticated;
 grant update(emoji,sort_order) on habit_mobile.habits to authenticated;
 
-create function habit_mobile.create_habit_v3(p_id text,p_name text,p_color integer,p_emoji text default '🌱',p_type text default 'boolean',p_target integer default 1,p_unit text default 'completion') returns jsonb
+create function habit_mobile.create_habit_v3(p_id text,p_name text,p_color integer,p_emoji text default '🌱',p_type text default 'boolean',p_target integer default 1,p_unit text default 'completion',p_direction text default 'at_least') returns jsonb
 language plpgsql security invoker set search_path='' as $$
 declare uid uuid; h habit_mobile.habits%rowtype; begin
   uid:=habit_mobile.require_user_v3();
-  insert into habit_mobile.habits(id,name,color,emoji,habit_type,target,unit) values(p_id,btrim(p_name),p_color,p_emoji,p_type,p_target,p_unit) on conflict(user_id,id) do nothing;
+  insert into habit_mobile.habits(id,name,color,emoji,habit_type,target,unit,goal_direction) values(p_id,btrim(p_name),p_color,p_emoji,p_type,p_target,p_unit,p_direction) on conflict(user_id,id) do nothing;
   select * into h from habit_mobile.habits where user_id=uid and id=p_id;
-  if h.name is distinct from btrim(p_name) or h.color is distinct from p_color or h.emoji is distinct from p_emoji or h.habit_type is distinct from p_type or h.target is distinct from p_target or h.unit is distinct from p_unit or h.archived_on is not null then raise exception 'id_already_used'; end if;
+  if h.name is distinct from btrim(p_name) or h.color is distinct from p_color or h.emoji is distinct from p_emoji or h.habit_type is distinct from p_type or h.target is distinct from p_target or h.unit is distinct from p_unit or h.goal_direction is distinct from p_direction or h.archived_on is not null then raise exception 'id_already_used'; end if;
   return to_jsonb(h);
 end $$;
 create function habit_mobile.edit_habit_v3(p_id text,p_name text,p_color integer,p_emoji text) returns jsonb
@@ -164,14 +194,25 @@ declare uid uuid; h habit_mobile.habits%rowtype; begin
   if h.archived_on is null then update habit_mobile.habits set archived_on=(clock_timestamp() at time zone 'Asia/Shanghai')::date where user_id=uid and id=p_id returning * into h; end if;
   return to_jsonb(h);
 end $$;
-create function habit_mobile.record_progress_v3(p_operation_id uuid,p_habit_id text,p_date date,p_action text,p_value bigint,p_expected_revision bigint default null) returns jsonb
+create function habit_mobile.record_progress_v3(p_operation_id uuid,p_event_id uuid,p_habit_id text,p_date date,p_action text,p_value integer,p_occurred_at timestamptz,p_expected_revision bigint default 0,p_kind text default 'occurrence') returns jsonb
 language plpgsql security invoker set search_path='' as $$
 declare uid uuid; receipt habit_mobile.progress_operations%rowtype; begin
   uid:=habit_mobile.require_user_v3();
-  insert into habit_mobile.progress_operations(operation_id,habit_id,date,action,input_value,expected_revision)
-    values(p_operation_id,p_habit_id,p_date,p_action,p_value,p_expected_revision) returning * into receipt;
+  insert into habit_mobile.progress_operations(operation_id,event_id,event_kind,habit_id,date,action,input_value,occurred_at,expected_revision)
+    values(p_operation_id,p_event_id,p_kind,p_habit_id,p_date,p_action,p_value,p_occurred_at,p_expected_revision) returning * into receipt;
   if receipt.operation_id is null then select * into receipt from habit_mobile.progress_operations where user_id=uid and operation_id=p_operation_id; end if;
   return to_jsonb(receipt);
+end $$;
+-- One transaction for a timestamp/date correction: void old event + record new UUID.
+create function habit_mobile.record_events_v3(p_events jsonb) returns jsonb
+language plpgsql security invoker set search_path='' as $$
+declare e jsonb; results jsonb:='[]'; begin
+  perform habit_mobile.require_user_v3();
+  if jsonb_typeof(p_events) is distinct from 'array' or jsonb_array_length(p_events) not between 1 and 100 then raise exception 'invalid_event_batch'; end if;
+  for e in select * from jsonb_array_elements(p_events) loop
+    results:=results || jsonb_build_array(habit_mobile.record_progress_v3((e->>'operation_id')::uuid,(e->>'event_id')::uuid,e->>'habit_id',(e->>'date')::date,e->>'action',(e->>'value')::integer,(e->>'occurred_at')::timestamptz,coalesce((e->>'expected_revision')::bigint,0),coalesce(e->>'kind','occurrence')));
+  end loop;
+  return results;
 end $$;
 create function habit_mobile.reorder_habits_v3(p_ids text[],p_expected_ids text[]) returns jsonb
 language plpgsql security invoker set search_path='' as $$
@@ -248,7 +289,37 @@ declare result jsonb; today date:=(statement_timestamp() at time zone 'Asia/Shan
     'progress',(select coalesce(jsonb_agg(to_jsonb(p) order by habit_id,date),'[]'::jsonb) from habit_mobile.habit_daily_progress p where user_id=auth.uid() and date between p_start and p_end and (p_habit_id is null or habit_id=p_habit_id))) into result;
   return result;
 end $$;
--- Bounded 366-row aggregate output, instead of sending every habit/day detail.
+-- Bounded single-day detail/audit. Cursor is (event_id,revision), not sync state.
+create function habit_mobile.read_events_v3(p_habit_id text,p_date date,p_after uuid default null,p_after_revision bigint default 0,p_audit boolean default false,p_limit integer default 100) returns jsonb
+language plpgsql stable security invoker set search_path='' as $$
+declare result jsonb; begin
+  if auth.uid() is null then raise exception using errcode='42501',message='authentication_required'; end if;
+  if p_date is null or p_limit is null or p_limit not between 1 and 100 or p_after_revision is null or p_after_revision<0 or p_audit is null then raise exception 'invalid_detail_page'; end if;
+  if not exists(select 1 from habit_mobile.habits where user_id=auth.uid() and id=p_habit_id) then raise exception 'habit_not_found'; end if;
+  if p_audit then
+    select coalesce(jsonb_agg(to_jsonb(r) order by event_id,revision),'[]'::jsonb) into result from
+      (select * from habit_mobile.progress_operations where user_id=auth.uid() and habit_id=p_habit_id and date=p_date and (p_after is null or (event_id,revision)>(p_after,p_after_revision)) order by event_id,revision limit p_limit) r;
+  else
+    select coalesce(jsonb_agg(to_jsonb(r) order by event_id,revision),'[]'::jsonb) into result from
+      (select * from habit_mobile.habit_events where user_id=auth.uid() and habit_id=p_habit_id and date=p_date and (p_after is null or event_id>p_after) order by event_id limit p_limit) r;
+  end if;
+  return result;
+end $$;
+revoke all on function habit_mobile.read_events_v3(text,date,uuid,bigint,boolean,integer) from public,anon,authenticated;
+grant execute on function habit_mobile.read_events_v3(text,date,uuid,bigint,boolean,integer) to authenticated;
+
+-- Shared classification for statistics, heatmap and badges. No invented zero days.
+create view habit_mobile.habit_goal_days with(security_invoker=true) as
+ select p.*,h.goal_direction,h.target,
+   case when h.goal_direction='tracking_only' then 'recorded'
+     when h.goal_direction='at_least' then case when p.actual_value>=h.target then 'completed' else 'incomplete' end
+     when p.actual_value>h.target then 'exceeded'
+     when p.date>=(statement_timestamp() at time zone 'Asia/Shanghai')::date then 'within_limit_pending'
+     when not p.confirmed then 'unknown'
+     else 'completed' end status
+ from habit_mobile.habit_daily_progress p join habit_mobile.habits h on h.user_id=p.user_id and h.id=p.habit_id;
+revoke all on habit_mobile.habit_goal_days from public,anon,authenticated;
+grant select on habit_mobile.habit_goal_days to authenticated;
 create function habit_mobile.read_summary_v3(p_start date,p_end date,p_habit_id text default null) returns jsonb
 language plpgsql stable security invoker set search_path='' as $$
 declare result jsonb; today date:=(statement_timestamp() at time zone 'Asia/Shanghai')::date; begin
@@ -256,18 +327,24 @@ declare result jsonb; today date:=(statement_timestamp() at time zone 'Asia/Shan
   if p_start is null or p_end is null or p_start>p_end or p_end-p_start>365 or p_end>today then raise exception 'invalid_date_range'; end if;
   if p_habit_id is not null and not exists(select 1 from habit_mobile.habits where user_id=auth.uid() and id=p_habit_id) then raise exception 'habit_not_found'; end if;
   with days as(select d::date as day from generate_series(p_start::timestamp,p_end::timestamp,interval '1 day') d),
-  eligible as(select d.day,h.id,h.habit_type,h.target from days d left join habit_mobile.habits h on h.user_id=auth.uid() and h.created_date<=d.day and (h.archived_on is null or d.day<=h.archived_on) and (p_habit_id is null or h.id=p_habit_id)),
-  amounts as(select e.*,case when e.habit_type='boolean' then case when c.habit_id is not null then 1 else 0 end else coalesce(p.actual_value,0) end actual
+  eligible as(select d.day,h.id,h.habit_type,h.goal_direction,h.target from days d left join habit_mobile.habits h on h.user_id=auth.uid() and h.created_date<=d.day and (h.archived_on is null or d.day<=h.archived_on) and (p_habit_id is null or h.id=p_habit_id)),
+  states as(select e.*,case when e.habit_type='boolean' then case when c.habit_id is null then 'incomplete' else 'completed' end
+    when e.goal_direction='tracking_only' then 'recorded'
+    when g.status is not null then g.status
+    when e.goal_direction='at_most' then case when e.day=today then 'within_limit_pending' else 'unknown' end
+    else 'incomplete' end status
     from eligible e left join habit_mobile.habit_checkins c on c.user_id=auth.uid() and c.habit_id=e.id and c.date=e.day
-    left join habit_mobile.habit_daily_progress p on p.user_id=auth.uid() and p.habit_id=e.id and p.date=e.day),
-  totals as(select day,count(id) due,count(*) filter(where id is not null and actual>=target) completed,
-    count(id) filter(where habit_type='duration') duration_due,count(id) filter(where habit_type='count') count_due,
-    coalesce(sum(actual) filter(where habit_type='duration'),0) actual_minutes,
-    coalesce(sum(actual) filter(where habit_type='count'),0) actual_repetitions,
-    round(100*avg(least(actual::numeric/nullif(target,0),1)) filter(where id is not null),2) progress_rate from amounts group by day),
+    left join habit_mobile.habit_goal_days g on g.user_id=auth.uid() and g.habit_id=e.id and g.date=e.day),
+  totals as(select day,
+    count(id) filter(where goal_direction<>'tracking_only' and status not in ('unknown','within_limit_pending')) due,
+    count(id) filter(where status='completed') completed,
+    count(id) filter(where status in ('unknown','within_limit_pending')) pending,
+    count(id) filter(where goal_direction='tracking_only') tracking,
+    count(id) filter(where status='exceeded') exceeded from states group by day),
   rated as(select *,round(100*completed::numeric/nullif(due,0),2) completion_rate from totals)
   select jsonb_build_object('start',p_start,'end',p_end,'today',today,'days',(select jsonb_agg(to_jsonb(r) order by day) from rated r),
     'due',(select sum(due) from rated),'completed',(select sum(completed) from rated),
+    'pending',(select sum(pending) from rated),
     'completion_rate',(select round(100*sum(completed)::numeric/nullif(sum(due),0),2) from rated)) into result;
   return result;
 end $$;
@@ -278,7 +355,7 @@ declare result jsonb; begin
   if auth.uid() is null then raise exception using errcode='42501',message='authentication_required'; end if;
   with h as(select *,least(coalesce(archived_on,(statement_timestamp() at time zone 'Asia/Shanghai')::date),(statement_timestamp() at time zone 'Asia/Shanghai')::date) anchor from habit_mobile.habits where user_id=auth.uid()),
   days as(select c.habit_id,c.date from habit_mobile.habit_checkins c join h on c.habit_id=h.id where c.user_id=auth.uid() and h.habit_type='boolean' and c.date between h.created_date and h.anchor
-    union all select p.habit_id,p.date from habit_mobile.habit_daily_progress p join h on p.habit_id=h.id where p.user_id=auth.uid() and p.actual_value>=h.target and p.date between h.created_date and h.anchor),
+    union all select p.habit_id,p.date from habit_mobile.habit_goal_days p join h on p.habit_id=h.id where p.user_id=auth.uid() and p.status='completed' and p.date between h.created_date and h.anchor),
   numbered as(select *,date-(row_number() over(partition by habit_id order by date))::integer island from days),
   runs as(select habit_id,min(date) first_day,max(date) last_day,count(*) length from numbered group by habit_id,island),
   summaries as(select h.id,
@@ -288,8 +365,8 @@ declare result jsonb; begin
   select coalesce(jsonb_agg(to_jsonb(s) order by id),'[]'::jsonb) into result from summaries s;
   return result;
 end $$;
-revoke all on function habit_mobile.create_habit_v3(text,text,integer,text,text,integer,text),habit_mobile.edit_habit_v3(text,text,integer,text),habit_mobile.archive_habit_v3(text),habit_mobile.record_progress_v3(uuid,text,date,text,bigint,bigint),habit_mobile.reorder_habits_v3(text[],text[]),habit_mobile.read_snapshot_v3(date,date,text),habit_mobile.read_streaks_v3(),habit_mobile.read_summary_v3(date,date,text) from public,anon,authenticated;
-grant execute on function habit_mobile.create_habit_v3(text,text,integer,text,text,integer,text),habit_mobile.edit_habit_v3(text,text,integer,text),habit_mobile.archive_habit_v3(text),habit_mobile.record_progress_v3(uuid,text,date,text,bigint,bigint),habit_mobile.reorder_habits_v3(text[],text[]),habit_mobile.read_snapshot_v3(date,date,text),habit_mobile.read_streaks_v3(),habit_mobile.read_summary_v3(date,date,text) to authenticated;
+revoke all on function habit_mobile.create_habit_v3(text,text,integer,text,text,integer,text,text),habit_mobile.edit_habit_v3(text,text,integer,text),habit_mobile.archive_habit_v3(text),habit_mobile.record_progress_v3(uuid,uuid,text,date,text,integer,timestamptz,bigint,text),habit_mobile.record_events_v3(jsonb),habit_mobile.reorder_habits_v3(text[],text[]),habit_mobile.read_snapshot_v3(date,date,text),habit_mobile.read_streaks_v3(),habit_mobile.read_summary_v3(date,date,text) from public,anon,authenticated;
+grant execute on function habit_mobile.create_habit_v3(text,text,integer,text,text,integer,text,text),habit_mobile.edit_habit_v3(text,text,integer,text),habit_mobile.archive_habit_v3(text),habit_mobile.record_progress_v3(uuid,uuid,text,date,text,integer,timestamptz,bigint,text),habit_mobile.record_events_v3(jsonb),habit_mobile.reorder_habits_v3(text[],text[]),habit_mobile.read_snapshot_v3(date,date,text),habit_mobile.read_streaks_v3(),habit_mobile.read_summary_v3(date,date,text) to authenticated;
 -- Reassert legacy ACLs explicitly; CREATE OR REPLACE alone preserves old ACLs.
 revoke all on function habit_mobile.guard_habit(),habit_mobile.guard_checkin() from public,anon,authenticated;
 revoke all on function habit_mobile.create_habit(text,text,integer),habit_mobile.edit_habit(text,text,integer),habit_mobile.archive_habit(text),habit_mobile.set_checkin(text,date,boolean),habit_mobile.read_snapshot() from public,anon,authenticated;

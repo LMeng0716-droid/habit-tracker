@@ -50,6 +50,9 @@ async function backend(page: Page, snapshot = fixture()) {
   const heldWriteRequests = new Set<string>();
   let logoutRequests = 0;
   let issuedSessions = 0;
+  let loginGate: Promise<void> | null = null;
+  let releaseLogin: (() => void) | null = null;
+  let loginRequests = 0;
   let serverPasswordError = false;
   let signupRequests = 0;
   let failRead = false,
@@ -67,6 +70,8 @@ async function backend(page: Page, snapshot = fixture()) {
         body: JSON.stringify(body),
       });
     if (path === "/auth/v1/token") {
+      loginRequests++;
+      if (loginGate) await loginGate;
       const args = request.postDataJSON() as {
         password: string;
         email: string;
@@ -231,6 +236,16 @@ async function backend(page: Page, snapshot = fixture()) {
       releaseLogout = null;
     },
     logoutRequests: () => logoutRequests,
+    holdLogin: () => {
+      loginGate = new Promise<void>((resolve) => {
+        releaseLogin = resolve;
+      });
+    },
+    releaseLogin: () => {
+      releaseLogin?.();
+      loginGate = null;
+    },
+    loginRequests: () => loginRequests,
     signupRequests: () => signupRequests,
     serverPasswordError: () => {
       serverPasswordError = true;
@@ -655,6 +670,10 @@ test("PWA manifest/icons stay scoped and no Service Worker is registered", async
     ),
   ).toBe(0);
   await login(page);
+  // Clicking submit is not completion of the asynchronous Auth request.
+  await expect(
+    page.getByRole("heading", { name: "阅读", exact: true }),
+  ).toBeVisible();
   await page.reload();
   await expect(
     page.getByRole("heading", { name: "阅读", exact: true }),
@@ -687,6 +706,9 @@ for (const deadline of ["idle", "absolute"] as const)
     await backend(page);
     await page.goto("./");
     await login(page);
+    await expect(
+      page.getByRole("heading", { name: "阅读", exact: true }),
+    ).toBeVisible();
     await page.reload();
     await expect(
       page.getByRole("heading", { name: "阅读", exact: true }),
@@ -986,6 +1008,9 @@ test("confirmed success is visible next to a lower card and inside the viewport,
       name: `习惯${i}`,
     });
   const api = await backend(page, snapshot);
+  // Keep the 1.2s feedback alive while inspecting layout/CSS on slow runners.
+  // Advance explicitly below to verify dismissal; do not change product timing.
+  await page.clock.pauseAt(new Date(now.getTime() + 60_000));
   await page.goto("./");
   await login(page);
   const card = habitCard(page, "习惯9");
@@ -1114,4 +1139,35 @@ test("refresh seeing committed data before write acknowledgements cannot swallow
     "今天的目标全部完成！🌱",
   );
   expect(api.writes()).toBe(2);
+});
+
+test("reload recovery waits for confirmed asynchronous login, not the submit click", async ({
+  page,
+}) => {
+  const api = await backend(page);
+  api.holdLogin();
+  await page.goto("./");
+  await login(page);
+  await expect.poll(api.loginRequests).toBe(1);
+  await expect(
+    page.getByRole("heading", { name: "阅读", exact: true }),
+  ).toHaveCount(0);
+  expect(
+    await page.evaluate(() =>
+      Object.keys(localStorage).filter((k) => k.endsWith(":session-policy")),
+    ),
+  ).toEqual([]);
+  api.releaseLogin();
+  await expect(
+    page.getByRole("heading", { name: "阅读", exact: true }),
+  ).toBeVisible();
+  expect(
+    await page.evaluate(() =>
+      Object.keys(localStorage).filter((k) => k.endsWith(":session-policy")),
+    ),
+  ).toHaveLength(1);
+  await page.reload();
+  await expect(
+    page.getByRole("heading", { name: "阅读", exact: true }),
+  ).toBeVisible();
 });

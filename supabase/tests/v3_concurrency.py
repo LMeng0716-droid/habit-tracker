@@ -9,7 +9,9 @@ A='00000000-0000-0000-0000-000000000003'; B='00000000-0000-0000-0000-00000000000
 TODAY="(clock_timestamp() at time zone 'Asia/Shanghai')::date"
 def sql(q,check=True): return subprocess.run(PSQL,input=q,text=True,capture_output=True,check=check)
 def auth(uid): return f"set role authenticated; select set_config('request.jwt.claim.sub','{uid}',false);"
-def op(id,value,action='add',revision='null'): return f"select habit_mobile.record_progress_v3('{id}','n',{TODAY},'{action}',{value},{revision});"
+def op(id,value,action='record',revision='0',event=None):
+ event=event or id
+ return f"select habit_mobile.record_progress_v3('{id}','{event}','n',{TODAY},'{action}',{value},({TODAY})::timestamp at time zone 'Asia/Shanghai',{revision});"
 sql(f"insert into auth.users values('{A}'),('{B}'),('{S}');")
 sql(auth(A)+"select habit_mobile.create_habit_v3('n','计数',0,'🏃','count',30,'repetition');")
 sql(auth(B)+"select habit_mobile.create_habit_v3('n','B计数',0,'🏃','count',30,'repetition');")
@@ -43,9 +45,13 @@ def contend(owner,first,second,success=True,independent=False):
 contend(A,op('30000000-0000-0000-0000-000000000001',3),op('30000000-0000-0000-0000-000000000002',7),independent=True)
 assert sql(auth(A)+"select actual_value from habit_mobile.habit_daily_progress where habit_id='n';").stdout.splitlines()[-1]=='10'
 contend(A,op('30000000-0000-0000-0000-000000000003',1),op('30000000-0000-0000-0000-000000000003',1))
-assert sql(auth(A)+"select actual_value,revision from habit_mobile.habit_daily_progress where habit_id='n';").stdout.splitlines()[-1]=='11|3'
-contend(A,op('30000000-0000-0000-0000-000000000004',20,'set','3'),op('30000000-0000-0000-0000-000000000005',30,'set','3'),success=False)
-assert sql(auth(A)+"select actual_value,revision from habit_mobile.habit_daily_progress where habit_id='n';").stdout.splitlines()[-1]=='20|4'
+assert sql(auth(A)+"select actual_value,event_count from habit_mobile.habit_daily_progress where habit_id='n';").stdout.splitlines()[-1]=='11|3'
+event='30000000-0000-0000-0000-000000000001'
+contend(A,op('30000000-0000-0000-0000-000000000004',20,'revise','1',event),op('30000000-0000-0000-0000-000000000005',30,'revise','1',event),success=False)
+assert sql(auth(A)+"select actual_value,event_count from habit_mobile.habit_daily_progress where habit_id='n';").stdout.splitlines()[-1]=='28|3'
+# Retrying the same void operation in two sessions subtracts only the selected event once.
+contend(A,op('30000000-0000-0000-0000-000000000006',20,'void','2',event),op('30000000-0000-0000-0000-000000000006',20,'void','2',event))
+assert sql(auth(A)+"select actual_value,event_count from habit_mobile.habit_daily_progress where habit_id='n';").stdout.splitlines()[-1]=='8|2'
 contend(S,"select habit_mobile.reorder_habits_v3(array['c','b','a'],array['a','b','c']);","select habit_mobile.reorder_habits_v3(array['b','a','c'],array['a','b','c']);",success=False)
 assert sql(auth(S)+"select string_agg(id,',' order by sort_order,created_at,id) from habit_mobile.habits;").stdout.splitlines()[-1]=='c,b,a'
-print('PASS concurrent increments, duplicate operation, correction CAS, reorder CAS, independent account locks')
+print('PASS concurrent increments, duplicate operation, event correction CAS, duplicate void, reorder CAS, independent account locks')

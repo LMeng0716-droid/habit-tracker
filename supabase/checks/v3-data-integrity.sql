@@ -14,5 +14,5 @@ where c.date<h.created_date or c.date>(statement_timestamp() at time zone 'Asia/
 -- after review. Do not execute this against a partial/unapproved schema blindly.
 select 'select count(*) from habit_mobile.progress_operations;' as after_only_check
 where to_regclass('habit_mobile.progress_operations') is not null;
-select 'select count(*) from habit_mobile.habits where emoji<>''🌱'' or habit_type<>''boolean'' or target<>1 or unit<>''completion'' or sort_order<>0;' as immediate_after_defaults_check
+select 'select count(*) from habit_mobile.habits where emoji<>''🌱'' or habit_type<>''boolean'' or goal_direction<>''at_least'' or target is distinct from 1 or unit<>''completion'' or sort_order<>0;' as immediate_after_defaults_check
 where exists(select 1 from information_schema.columns where table_schema='habit_mobile' and table_name='habits' and column_name='emoji');
