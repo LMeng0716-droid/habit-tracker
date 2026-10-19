@@ -21,3 +21,14 @@ jobs:
       - uses: actions/checkout@v4
       - name: 两表云端 RLS、事务和并发测试
         run: bash supabase/tests/run-mobile.sh ${{ matrix.state }}
+
+  v3-proposal-database:
+    strategy:
+      matrix:
+        state: [empty, upgrade]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: 待审批 V3 SQL 的本地隔离验证（不连接 Supabase）
+        run: python3 supabase/tests/run-v3.py ${{ matrix.state }}
