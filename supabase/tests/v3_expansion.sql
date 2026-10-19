@@ -160,6 +160,8 @@ select pg_temp.assert(exists(select 1 from jsonb_array_elements(habit_mobile.rea
 -- A voided confirmation removes that day's success and splits the derived streak.
 select pg_temp.event(200,115,'past-limit',0,'void',1,15,'day_confirmation');
 select pg_temp.assert(exists(select 1 from jsonb_array_elements(habit_mobile.read_streaks_v3()) h where h->>'id'='past-limit' and (h->>'longest')::integer=15 and jsonb_array_length(h->'badges')=1),'history correction can revoke derived badges');
+select pg_temp.event(201,115,'past-limit',0,'revise',2,15,'day_confirmation');
+select pg_temp.assert(exists(select 1 from jsonb_array_elements(habit_mobile.read_streaks_v3()) h where h->>'id'='past-limit' and (h->>'longest')::integer=30),'withdrawn confirmation can be explicitly reconfirmed using its original ID');
 select habit_mobile.archive_habit_v3('past-limit');
 select pg_temp.event(300,300,'past-limit',1,'record',0,1);
 select pg_temp.assert((select status='unknown' from habit_mobile.habit_goal_days where habit_id='past-limit' and date=(clock_timestamp() at time zone 'Asia/Shanghai')::date-1),'archived numeric history can be corrected, invalidates confirmation');

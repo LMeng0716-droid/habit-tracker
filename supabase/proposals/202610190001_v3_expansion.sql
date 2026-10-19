@@ -138,7 +138,7 @@ begin
     new.revision:=1;
   else
     if prior.habit_id<>new.habit_id or prior.date<>new.date or prior.event_kind<>new.event_kind then raise exception 'immutable_event_identity'; end if;
-    if new.action not in ('revise','void') or new.expected_revision<>prior.revision or prior.action='void' then raise exception using errcode='40001',message='event_revision_conflict'; end if;
+    if new.action not in ('revise','void') or new.expected_revision<>prior.revision or (prior.action='void' and prior.event_kind='occurrence') then raise exception using errcode='40001',message='event_revision_conflict'; end if;
     if new.action='void' and (new.input_value<>prior.input_value or new.occurred_at<>prior.occurred_at) then raise exception 'void_payload_mismatch'; end if;
     new.revision:=prior.revision+1;
   end if;

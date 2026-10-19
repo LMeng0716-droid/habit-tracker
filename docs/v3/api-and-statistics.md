@@ -35,7 +35,7 @@
 
 `tracking`统计有效纯记录习惯数，并非记录条数；是否发生行为看 progress/event_count，缺记录不能画成“已记录”。
 
-`due` 是可判定目标数（Boolean/at_least、at_most已确认或明确超标）；pending独立计数，tracking独立计数，不进入due。完成率=completed/due，due=0为NULL，不能显示100%。今日at_most超标进入分母但不成功，未超标仍待结算；界面须同时显示待确认数，不能以一个百分比暗示全日完成。跨周/月聚合用总completed/总due，不平均每日百分比。
+`due` 是可判定目标数（Boolean/at_least、at_most已确认或明确超标）；pending独立计数，tracking独立计数，不进入due。完成率=completed/due，due=0为NULL，不能显示100%。今日at_most超标进入分母但不成功，未超标仍待结算；界面须同时显示待确认数，不能以一个百分比暗示全日完成。跨周/月聚合用总completed/总due，不平均每日百分比。自然周为北京时间周一至周日，自然月为公历月；未结束周期明确标注截至今日及待结算数量。
 
 热力图最近365天含今日（today-364到today），接口允许最多366天处理闰年。用同一统计状态：无有效目标/仅tracking、待结算或未知、未完成/超标、部分完成、全部完成；有pending不得画“全部完成”，tracking以记录点或独立图层展示，不能混进绿格分母。数量单位不混加，分钟和次数独立显示，取消了无意义的统一 actual/target 进度百分比。
 

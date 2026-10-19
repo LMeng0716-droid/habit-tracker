@@ -28,7 +28,7 @@ habits 新增 emoji（默认🌱）、sort_order（bigint）、habit_type（bool
 
 progress_operations：user_id、operation_id（用户内主键）、event_id、event_kind（occurrence/day_confirmation）、habit_id（复合用户外键）、date、action（record/revise/void）、input_value、occurred_at（行为时间）、expected_revision、revision、created_at（服务器接收时间）、confirmed_revisions（服务器生成的当日event_id→revision完整映射，仅确认行使用）。唯一(user_id,event_id,revision)，一日只允许一个逻辑 confirmation，后续用 revise 重新确认。
 
-record 创建 revision1；revise 精确修正指定事件值/同日发生时间；void 撤销指定事件，必须回传该事件当前值/时间和revision，不能借撤销改写载荷，也不能复活已撤销事件。所有旧版本保留，明细默认展示最新未撤销行为，审计页可查看所有版本和撤销状态。日期/habit/kind 不能在一个 event_id 上变更；日期修正必须用批量 RPC 原子 void 旧事件+record 新事件，保留两条之间的批量回执供客户端解释。没有服务器批次 ID 字段，前端需持有该批请求操作 ID 列表；跨会话审计只能逐条看到原始回执，不能声称已有持久批次关联。
+record 创建 revision1；revise 精确修正指定事件值/同日发生时间；void 撤销指定事件，必须回传该事件当前值/时间和revision，不能借撤销改写载荷，也不能复活已撤销行为。日终确认撤销后可以在原confirmation ID上revise重新确认，避免唯一约束使该日永久无法确认。所有旧版本保留，明细接口返回最新状态（含撤销标记），未来UI默认展示未撤销行为；审计模式可查看所有版本和撤销状态。日期/habit/kind 不能在一个 event_id 上变更；日期修正必须用批量 RPC 原子 void 旧事件+record 新事件，保留两条之间的批量回执供客户端解释。没有服务器批次 ID 字段，前端需持有该批请求操作 ID 列表；跨会话审计只能逐条看到原始回执，不能声称已有持久批次关联。
 
 ## 日期、零值与完整性确认
 
