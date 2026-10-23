@@ -864,7 +864,11 @@ export default function App() {
                         confirm(
                           "恢复这个习惯？",
                           `「${h.name}」将重新显示在今天，可继续打卡。以前的打卡记录会保留；归档当天被移除的打卡不会自动恢复。`,
-                          () => commit(restoreHabit(data, h.id), "习惯已恢复，可以继续打卡。"),
+                          () =>
+                            commit(
+                              restoreHabit(data, h.id),
+                              "习惯已恢复，可以继续打卡。",
+                            ),
                         )
                       }
                     >
