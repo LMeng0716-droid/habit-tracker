@@ -7,6 +7,7 @@ import {
   changeSchedule,
   removeCategory,
   reorderHabits,
+  restoreHabit,
   setNote,
   completedDates,
   emptySnapshot,
@@ -849,15 +850,27 @@ export default function App() {
             <section className="panel">
               <h2>已归档的习惯</h2>
               <p className="muted">
-                归档保留历史；第一版不支持恢复为活跃习惯。
+                归档保留历史。点击「恢复习惯」即可重新显示在今日列表并继续打卡。
               </p>
               {data.habits
                 .filter((h) => h.archivedDate)
                 .map((h) => (
-                  <a className="archive-row" key={h.id} href={`#habit/${h.id}`}>
-                    <span>{h.name}</span>
-                    <span>{h.archivedDate}　→</span>
-                  </a>
+                  <div className="archive-row" key={h.id}>
+                    <a href={`#habit/${h.id}`}>{h.name} · 查看历史</a>
+                    <button
+                      disabled={!writable}
+                      aria-label={`恢复习惯：${h.name}`}
+                      onClick={() =>
+                        confirm(
+                          "恢复这个习惯？",
+                          `「${h.name}」将重新显示在今天，可继续打卡。以前的打卡记录会保留；归档当天被移除的打卡不会自动恢复。`,
+                          () => commit(restoreHabit(data, h.id), "习惯已恢复，可以继续打卡。"),
+                        )
+                      }
+                    >
+                      恢复习惯
+                    </button>
+                  </div>
                 ))}
               {!data.habits.some((h) => h.archivedDate) && (
                 <p>还没有归档的习惯。</p>
