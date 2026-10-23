@@ -135,6 +135,31 @@ test("月历补记、跨月连续、统计口径、只读日期和浏览器返�
   await expect(page.getByText("3 / 9 个有效日完成")).toBeVisible();
   await expect(page.getByText("33%", { exact: true })).toBeVisible();
 });
+test("归档后可以从设置恢复，并继续打卡且保留历史", async ({ page }) => {
+  await start(page);
+  await seed(page);
+  await page.getByRole("link", { name: "阅读10分钟", exact: true }).click();
+  await page.getByRole("button", { name: "归档", exact: true }).click();
+  await page.getByRole("button", { name: "确认", exact: true }).click();
+  await page.getByRole("button", { name: "恢复习惯：阅读10分钟" }).click();
+  await expect(page.getByRole("dialog")).toContainText("以前的打卡记录会保留");
+  await page.getByRole("button", { name: "确认", exact: true }).click();
+  await page
+    .getByRole("navigation")
+    .getByRole("link", { name: "今天" })
+    .click();
+  await expect(
+    page.getByRole("link", { name: "阅读10分钟", exact: true }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "＋ 今日打卡" }).click();
+  const saved = await page.evaluate(
+    (key) => JSON.parse(localStorage.getItem(key)!),
+    key,
+  );
+  expect(saved.habits[0].archivedDate).toBeUndefined();
+  expect(saved.completionRecords).toHaveLength(7);
+});
+
 test("归档去掉当天记录、保留历史，只读且可永久删除", async ({ page }) => {
   await start(page);
   await seed(page);

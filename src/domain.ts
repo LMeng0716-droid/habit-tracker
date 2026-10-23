@@ -322,6 +322,17 @@ export function archiveHabit(
     ),
   };
 }
+// Restore only the archived flag; retain the same habit ID and past completions.
+export function restoreHabit(data: Snapshot, id: string): Snapshot {
+  return {
+    ...data,
+    habits: data.habits.map((h) => {
+      if (h.id !== id || !h.archivedDate) return h;
+      const { archivedDate: _archivedDate, ...restored } = h;
+      return restored;
+    }),
+  };
+}
 export const MAX_BACKUP_SIZE = 5 * 1024 * 1024;
 export function parseSnapshot(
   raw: string,
