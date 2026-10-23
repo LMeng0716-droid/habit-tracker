@@ -141,12 +141,8 @@ test("归档后可以从设置恢复，并继续打卡且保留历史", async ({
   await page.getByRole("link", { name: "阅读10分钟", exact: true }).click();
   await page.getByRole("button", { name: "归档", exact: true }).click();
   await page.getByRole("button", { name: "确认", exact: true }).click();
-  await page
-    .getByRole("button", { name: "恢复习惯：阅读10分钟" })
-    .click();
-  await expect(page.getByRole("dialog")).toContainText(
-    "以前的打卡记录会保留",
-  );
+  await page.getByRole("button", { name: "恢复习惯：阅读10分钟" }).click();
+  await expect(page.getByRole("dialog")).toContainText("以前的打卡记录会保留");
   await page.getByRole("button", { name: "确认", exact: true }).click();
   await page
     .getByRole("navigation")
