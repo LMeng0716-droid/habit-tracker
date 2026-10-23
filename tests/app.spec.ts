@@ -141,13 +141,25 @@ test("归档后可以从设置恢复，并继续打卡且保留历史", async ({
   await page.getByRole("link", { name: "阅读10分钟", exact: true }).click();
   await page.getByRole("button", { name: "归档", exact: true }).click();
   await page.getByRole("button", { name: "确认", exact: true }).click();
-  await page.getByRole("button", { name: "恢复习惯：阅读10分钟" }).click();
-  await expect(page.getByRole("dialog")).toContainText("以前的打卡记录会保留");
+  await page
+    .getByRole("button", { name: "恢复习惯：阅读10分钟" })
+    .click();
+  await expect(page.getByRole("dialog")).toContainText(
+    "以前的打卡记录会保留",
+  );
   await page.getByRole("button", { name: "确认", exact: true }).click();
-  await page.getByRole("navigation").getByRole("link", { name: "今天" }).click();
-  await expect(page.getByRole("link", { name: "阅读10分钟", exact: true })).toBeVisible();
+  await page
+    .getByRole("navigation")
+    .getByRole("link", { name: "今天" })
+    .click();
+  await expect(
+    page.getByRole("link", { name: "阅读10分钟", exact: true }),
+  ).toBeVisible();
   await page.getByRole("button", { name: "＋ 今日打卡" }).click();
-  const saved = await page.evaluate((key) => JSON.parse(localStorage.getItem(key)!), key);
+  const saved = await page.evaluate(
+    (key) => JSON.parse(localStorage.getItem(key)!),
+    key,
+  );
   expect(saved.habits[0].archivedDate).toBeUndefined();
   expect(saved.completionRecords).toHaveLength(7);
 });
