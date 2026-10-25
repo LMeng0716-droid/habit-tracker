@@ -116,7 +116,7 @@ export function parseSnapshot(value: unknown): Snapshot {
     !Array.isArray(value.checkins)
   )
     throw new Error("云端数据格式不正确，请重试或联系管理员。");
-  const habits = value.habits.map((h: unknown): Habit => {
+  const habits = value.habits.map((h: unknown, index: number): Habit => {
     if (
       !record(h) ||
       typeof h.id !== "string" ||
@@ -127,9 +127,8 @@ export function parseSnapshot(value: unknown): Snapshot {
       h.color > 4 ||
       !validDate(h.created_date) ||
       !(h.archived_on === null || validDate(h.archived_on)) ||
-      typeof h.emoji !== "string" ||
-      !Number.isInteger(h.sort_order) ||
-      h.sort_order < 0
+      (h.emoji !== undefined && typeof h.emoji !== "string") ||
+      (h.sort_order !== undefined && (!Number.isInteger(h.sort_order) || (h.sort_order as number) < 0))
     )
       throw new Error("云端习惯格式不正确。");
     return {
@@ -138,8 +137,8 @@ export function parseSnapshot(value: unknown): Snapshot {
       color: h.color,
       created_date: h.created_date,
       archived_on: h.archived_on,
-      emoji: h.emoji,
-      sort_order: h.sort_order,
+      emoji: typeof h.emoji === "string" ? h.emoji : "🌱",
+      sort_order: typeof h.sort_order === "number" ? h.sort_order : (index + 1) * 1024,
     };
   });
   const checkins = value.checkins.map((c: unknown): Checkin => {
