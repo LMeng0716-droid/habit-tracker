@@ -595,6 +595,19 @@ export default function App() {
     }
   }
 
+  useEffect(() => {
+    if (!session?.user.id) return;
+    const key = prefsKey(projectUrl, import.meta.env.BASE_URL, session.user.id);
+    try {
+      setPrefs(parseHabitPrefs(localStorage.getItem(key)));
+      setPrefWarning("");
+    } catch {
+      setPrefs(emptyHabitPrefs());
+      setPrefWarning("无法读取此设备的图标和排序设置。");
+    }
+  }, [session?.user.id]);
+
+
   if (!cloud)
     return (
       <main className="app">
@@ -746,17 +759,6 @@ export default function App() {
       </main>
     );
 
-  useEffect(() => {
-    if (!session?.user.id) return;
-    const key = prefsKey(projectUrl, import.meta.env.BASE_URL, session.user.id);
-    try {
-      setPrefs(parseHabitPrefs(localStorage.getItem(key)));
-      setPrefWarning("");
-    } catch {
-      setPrefs(emptyHabitPrefs());
-      setPrefWarning("无法读取此设备的图标和排序设置。");
-    }
-  }, [session?.user.id]);
 
   if (!snapshot)
     return (
