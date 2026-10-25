@@ -37,7 +37,7 @@ export async function readSnapshot(signal?: AbortSignal) {
 }
 export async function writeCloud(
   name: string,
-  args: Record<string, string | number | boolean>,
+  args: Record<string, string | number | boolean | string[]>,
   signal?: AbortSignal,
 ) {
   if (!cloud) throw new Error("尚未配置云端服务。");
