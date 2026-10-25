@@ -24,3 +24,5 @@
 
 ## Cloud sync proposal
 The follow-up branch stores emoji and order in the account-owned `habit_mobile.habits` rows. The migration is proposal-only and must not be applied until the user explicitly approves the database change. The app must only be deployed after the migration is applied and verified.
+
+The cloud-sync UI branch has been wired to `set_habit_emoji` and `reorder_habits`; its build artifact remains unpublished until the proposed database migration is explicitly approved and verified.
