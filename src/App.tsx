@@ -607,7 +607,6 @@ export default function App() {
     }
   }, [session?.user.id]);
 
-
   if (!cloud)
     return (
       <main className="app">
@@ -758,7 +757,6 @@ export default function App() {
         )}
       </main>
     );
-
 
   if (!snapshot)
     return (
