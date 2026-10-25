@@ -48,6 +48,23 @@ describe("cloud daily habit domain", () => {
     expect(streaks(dates, "2027-01-01")).toEqual({ current: 3, longest: 3 });
     expect(streaks(dates, "2027-01-02").current).toBe(0);
   });
+  it("preserves seven-day streak through yesterday and counts cumulative checkins", () => {
+    const dates = new Set([
+      "2026-10-18",
+      "2026-10-19",
+      "2026-10-20",
+      "2026-10-21",
+      "2026-10-22",
+      "2026-10-23",
+      "2026-10-24",
+    ]);
+    expect(streaks(dates, "2026-10-25")).toEqual({
+      current: 7,
+      longest: 7,
+    });
+    expect(dates.size).toBe(7);
+    expect(streaks(dates, "2026-10-26").current).toBe(0);
+  });
   it("excludes future days and caps monthly denominator", () => {
     expect(
       statistics(habit, new Set(["2026-12-29"]), "2026-12-30", "2026-12"),
