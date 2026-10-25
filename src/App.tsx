@@ -973,7 +973,9 @@ export default function App() {
                               className={`emoji-choice ${h.emoji === emoji ? "chosen" : ""}`}
                               aria-label={`为${h.name}选择${emoji}`}
                               aria-pressed={h.emoji === emoji}
-                              disabled={disabled || hasOperations || h.emoji === emoji}
+                              disabled={
+                                disabled || hasOperations || h.emoji === emoji
+                              }
                               onClick={() =>
                                 void mutate("set_habit_emoji", {
                                   p_id: h.id,
