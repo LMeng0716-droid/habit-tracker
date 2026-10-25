@@ -12,12 +12,7 @@ import {
 import { REQUEST_TIMEOUT } from "./request";
 import {
   EMOJI_CHOICES,
-  emptyHabitPrefs,
   moveHabit,
-  parseHabitPrefs,
-  prefsKey,
-  sortedHabits,
-  type HabitPrefs,
 } from "./habit-prefs";
 import { policyKey, readTimes, sessionExpired } from "./session-policy";
 import { PASSWORD_POLICY, passwordRules, passwordValid } from "./password";
@@ -109,8 +104,6 @@ export default function App() {
   const [mode, setMode] = useState<"login" | "signup" | "reset">("login");
   const [recovery, setRecovery] = useState(false);
   const [form, setForm] = useState<Form | null>(null);
-  const [prefs, setPrefs] = useState<HabitPrefs>(emptyHabitPrefs);
-  const [prefWarning, setPrefWarning] = useState("");
   const draggingHabit = useRef<string | null>(null);
   const touchHabit = useRef<string | null>(null);
   const [page, setPage] = useState<"today" | "history" | "account">("today");
@@ -172,8 +165,6 @@ export default function App() {
         setSnapshot(null);
         setFresh(false);
         setForm(null);
-        setPrefs(emptyHabitPrefs());
-        setPrefWarning("");
         setSelectedId("");
         setPage("today");
         setError("");
@@ -595,18 +586,6 @@ export default function App() {
     }
   }
 
-  useEffect(() => {
-    if (!session?.user.id) return;
-    const key = prefsKey(projectUrl, import.meta.env.BASE_URL, session.user.id);
-    try {
-      setPrefs(parseHabitPrefs(localStorage.getItem(key)));
-      setPrefWarning("");
-    } catch {
-      setPrefs(emptyHabitPrefs());
-      setPrefWarning("无法读取此设备的图标和排序设置。");
-    }
-  }, [session?.user.id]);
-
   if (!cloud)
     return (
       <main className="app">
@@ -641,7 +620,6 @@ export default function App() {
         </h2>
         {error && <p role="alert">{error}</p>}
         {notice && <p role="status">{notice}</p>}
-        {prefWarning && <p role="alert">{prefWarning}</p>}
         <form
           onSubmit={(e) => {
             e.preventDefault();
@@ -768,36 +746,12 @@ export default function App() {
       />
     );
 
-  const deviceKey = session?.user.id
-    ? prefsKey(projectUrl, import.meta.env.BASE_URL, session.user.id)
-    : "";
-  const active = sortedHabits(
-    snapshot?.habits.filter((h) => !h.archived_on) ?? [],
-    prefs.order,
-  );
-  function savePrefs(next: HabitPrefs) {
-    if (!deviceKey) return;
-    try {
-      localStorage.setItem(deviceKey, JSON.stringify(next));
-      setPrefs(next);
-      setPrefWarning("");
-    } catch {
-      setPrefWarning(
-        "此设备无法保存个性化设置，请检查浏览器存储权限。云端打卡数据不受影响。",
-      );
-    }
-  }
+  const active = [...(snapshot?.habits.filter((h) => !h.archived_on) ?? [])].sort((a, b) => a.sort_order - b.sort_order);
   function reorder(source: string, target: string) {
     if (!fresh || busy || Object.keys(operations).length) return;
-    savePrefs({
-      ...prefs,
-      order: moveHabit(
-        prefs.order,
-        active.map((h) => h.id),
-        source,
-        target,
-      ),
-    });
+    const ids = moveHabit(active.map((h) => h.id), active.map((h) => h.id), source, target);
+    if (ids.some((id, index) => id !== active[index]?.id))
+      void mutate("reorder_habits", { p_ids: ids });
   }
   const selected =
     snapshot?.habits.find((h) => h.id === selectedId) ?? snapshot?.habits[0];
@@ -901,8 +855,7 @@ export default function App() {
               创建习惯
             </button>
             <p className="device-settings-note">
-              长按排序手柄或点击上移／下移调整顺序。Emoji
-              与排序仅保存在本设备；习惯名称、归档和打卡仍同步到云端。
+              Emoji 与排序现已同步到云端，更换设备后登录同一账号即可保留。
             </p>
             <div className="habits">
               {active.map((h) => {
@@ -924,7 +877,7 @@ export default function App() {
                     }}
                   >
                     <span className="habit-symbol" aria-hidden="true">
-                      {prefs.icons[h.id] ?? "🌱"}
+                      {h.emoji}
                     </span>
                     <div className="habit-main">
                       <h3>{h.name}</h3>
@@ -1013,7 +966,7 @@ export default function App() {
                             <button
                               type="button"
                               key={emoji}
-                              className={`emoji-choice ${(prefs.icons[h.id] ?? "🌱") === emoji ? "chosen" : ""}`}
+                              className={`emoji-choice ${h.emoji === emoji ? "chosen" : ""}`}
                               aria-label={`为${h.name}选择${emoji}`}
                               aria-pressed={
                                 (prefs.icons[h.id] ?? "🌱") === emoji
