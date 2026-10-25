@@ -102,8 +102,8 @@ declare requested integer; existing integer;
 begin
   if auth.uid() is null then raise exception using errcode='42501',message='authentication_required'; end if;
   if p_ids is null then raise exception 'order_required'; end if;
-  select count(*) into requested from unnest(p_ids) item;
-  if requested > 500 or requested <> (select count(distinct item) from unnest(p_ids) item)
+  select count(*) into requested from unnest(p_ids) as item(id);
+  if requested > 500 or requested <> (select count(distinct id) from unnest(p_ids) as item(id))
      or array_position(p_ids,null) is not null then raise exception 'invalid_order'; end if;
   -- Serialize reorder operations of the same account.
   perform pg_advisory_xact_lock(hashtextextended(auth.uid()::text, 3917));
@@ -111,9 +111,9 @@ begin
     where user_id=auth.uid() and archived_on is null;
   if requested <> existing
      or exists (
-       select 1 from unnest(p_ids) item
+       select 1 from unnest(p_ids) as item(id)
        where not exists (select 1 from habit_mobile.habits h
-         where h.user_id=auth.uid() and h.id=item and h.archived_on is null)
+         where h.user_id=auth.uid() and h.id=item.id and h.archived_on is null)
      ) then raise exception 'order_habit_set_changed'; end if;
   update habit_mobile.habits h
     set sort_order=ordering.ordinality * 1024
