@@ -972,13 +972,12 @@ export default function App() {
                               key={emoji}
                               className={`emoji-choice ${h.emoji === emoji ? "chosen" : ""}`}
                               aria-label={`为${h.name}选择${emoji}`}
-                              aria-pressed={
-                                (prefs.icons[h.id] ?? "🌱") === emoji
-                              }
+                              aria-pressed={h.emoji === emoji}
+                              disabled={disabled || hasOperations || h.emoji === emoji}
                               onClick={() =>
-                                savePrefs({
-                                  ...prefs,
-                                  icons: { ...prefs.icons, [h.id]: emoji },
+                                void mutate("set_habit_emoji", {
+                                  p_id: h.id,
+                                  p_emoji: emoji,
                                 })
                               }
                             >
