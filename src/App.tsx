@@ -376,7 +376,7 @@ export default function App() {
 
   async function mutate(
     rpc: string,
-    args: Record<string, string | number | boolean>,
+    args: Record<string, string | number | boolean | string[]>,
   ) {
     if (
       running.current ||
