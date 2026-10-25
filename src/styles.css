@@ -190,6 +190,21 @@ nav button[aria-current="page"] {
 .email {
   overflow-wrap: anywhere;
 }
+.archived-habit-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  margin: 10px 0;
+}
+.archived-habit-actions button {
+  min-height: 44px;
+}
+.archived-habit-actions .archived {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  margin: 0;
+}
 .archived {
   display: block;
   width: 100%;

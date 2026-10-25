@@ -931,16 +931,32 @@ export default function App() {
                 {snapshot.habits
                   .filter((h) => h.archived_on)
                   .map((h) => (
-                    <button
-                      key={h.id}
-                      className="secondary archived"
-                      onClick={() => {
-                        setSelectedId(h.id);
-                        setPage("history");
-                      }}
-                    >
-                      {h.name} · 查看历史
-                    </button>
+                    <div className="archived-habit-actions" key={h.id}>
+                      <button
+                        className="secondary archived"
+                        onClick={() => {
+                          setSelectedId(h.id);
+                          setPage("history");
+                        }}
+                      >
+                        {h.name} · 查看历史
+                      </button>
+                      <button
+                        className="secondary"
+                        disabled={disabled || hasOperations}
+                        aria-label={`恢复习惯：${h.name}`}
+                        onClick={() => {
+                          if (
+                            window.confirm(
+                              `恢复「${h.name}」？原有打卡记录保留，恢复后可以继续打卡。`,
+                            )
+                          )
+                            void mutate("restore_habit", { p_id: h.id });
+                        }}
+                      >
+                        恢复习惯
+                      </button>
+                    </div>
                   ))}
               </details>
             )}
