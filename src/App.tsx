@@ -876,7 +876,8 @@ export default function App() {
                         当前连续 {habitStreak.current} 天
                       </p>
                       <p className="habit-history-stats">
-                        累计打卡 {habitDates.size} 天 · 最长连续 {habitStreak.longest} 天
+                        累计打卡 {habitDates.size} 天 · 最长连续 {habitStreak.longest}{" "}
+                        天
                       </p>
                     </div>
                     <button
