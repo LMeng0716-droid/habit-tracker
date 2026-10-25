@@ -17,6 +17,8 @@ const habit: Habit = {
   color: 0,
   created_date: "2026-12-29",
   archived_on: null,
+  emoji: "📖",
+  sort_order: 1024,
 };
 describe("cloud daily habit domain", () => {
   it("uses Shanghai's midnight regardless of device timezone", () => {
