@@ -33,6 +33,43 @@ update habit_mobile.habits h
 from ranked
 where h.user_id=ranked.user_id and h.id=ranked.id and h.sort_order is null;
 
+create or replace function habit_mobile.guard_habit()
+returns trigger language plpgsql set search_path='' as $function$
+declare
+  today date := (clock_timestamp() at time zone 'Asia/Shanghai')::date;
+begin
+  if auth.uid() is null or new.user_id <> auth.uid() then
+    raise exception using errcode='42501', message='authentication_required';
+  end if;
+  if tg_op='INSERT' then
+    new.created_date := today;
+    new.created_at := clock_timestamp();
+    new.archived_on := null;
+    -- Keep newly-created habits at the end, including when many devices create concurrently.
+    perform pg_advisory_xact_lock(hashtextextended(auth.uid()::text, 3917));
+    select coalesce(max(sort_order),0) + 1024 into new.sort_order
+      from habit_mobile.habits where user_id=auth.uid();
+    new.emoji := coalesce(new.emoji,'🌱');
+  else
+    if old.archived_on is not null
+       and (new.archived_on is not null
+         or new.name is distinct from old.name
+         or new.color is distinct from old.color
+         or new.emoji is distinct from old.emoji) then
+      raise exception 'habit_archived';
+    end if;
+    if new.user_id<>old.user_id or new.id<>old.id
+       or new.created_date<>old.created_date
+       or new.created_at<>old.created_at then
+      raise exception 'immutable_identity';
+    end if;
+    if new.archived_on is not null and new.archived_on<>today then
+      raise exception 'invalid_archive_date';
+    end if;
+  end if;
+  return new;
+end $function$;
+
 alter table habit_mobile.habits
   alter column sort_order set not null,
   add constraint habit_mobile_emoji_allowed
@@ -88,5 +125,22 @@ revoke all on function habit_mobile.set_habit_emoji(text,text) from public,anon,
 revoke all on function habit_mobile.reorder_habits(text[]) from public,anon,authenticated;
 grant execute on function habit_mobile.set_habit_emoji(text,text),
   habit_mobile.reorder_habits(text[]) to authenticated;
+create or replace function habit_mobile.read_snapshot()
+returns jsonb language plpgsql stable set search_path='' as $function$
+declare result jsonb;
+begin
+  if auth.uid() is null then
+    raise exception using errcode='42501',message='authentication_required';
+  end if;
+  select jsonb_build_object(
+    'today',(statement_timestamp() at time zone 'Asia/Shanghai')::date,
+    'habits',(select coalesce(jsonb_agg(to_jsonb(h) order by sort_order,created_at,id),'[]'::jsonb)
+      from habit_mobile.habits h where user_id=auth.uid()),
+    'checkins',(select coalesce(jsonb_agg(to_jsonb(c) order by habit_id,date),'[]'::jsonb)
+      from habit_mobile.habit_checkins c where user_id=auth.uid())
+  ) into result;
+  return result;
+end $function$;
+
 notify pgrst,'reload schema';
 commit;
