@@ -738,16 +738,6 @@ export default function App() {
       </main>
     );
 
-  if (!snapshot)
-    return (
-      <Startup
-        syncing
-        error={error}
-        retry={() => void refresh()}
-        logout={() => void logout()}
-      />
-    );
-
   useEffect(() => {
     if (!session?.user.id) return;
     const key = prefsKey(projectUrl, import.meta.env.BASE_URL, session.user.id);
@@ -759,6 +749,17 @@ export default function App() {
       setPrefWarning("无法读取此设备的图标和排序设置。");
     }
   }, [session?.user.id]);
+
+  if (!snapshot)
+    return (
+      <Startup
+        syncing
+        error={error}
+        retry={() => void refresh()}
+        logout={() => void logout()}
+      />
+    );
+
   const deviceKey = session?.user.id
     ? prefsKey(projectUrl, import.meta.env.BASE_URL, session.user.id)
     : "";
