@@ -5,6 +5,8 @@ export interface Habit {
   color: number;
   created_date: string;
   archived_on: string | null;
+  emoji: string;
+  sort_order: number;
 }
 export interface Checkin {
   habit_id: string;
@@ -124,7 +126,10 @@ export function parseSnapshot(value: unknown): Snapshot {
       h.color < 0 ||
       h.color > 4 ||
       !validDate(h.created_date) ||
-      !(h.archived_on === null || validDate(h.archived_on))
+      !(h.archived_on === null || validDate(h.archived_on)) ||
+      typeof h.emoji !== "string" ||
+      !Number.isInteger(h.sort_order) ||
+      h.sort_order < 0
     )
       throw new Error("云端习惯格式不正确。");
     return {
@@ -133,6 +138,8 @@ export function parseSnapshot(value: unknown): Snapshot {
       color: h.color,
       created_date: h.created_date,
       archived_on: h.archived_on,
+      emoji: h.emoji,
+      sort_order: h.sort_order,
     };
   });
   const checkins = value.checkins.map((c: unknown): Checkin => {
