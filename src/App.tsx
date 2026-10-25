@@ -844,11 +844,9 @@ export default function App() {
             </button>
             <div className="habits">
               {active.map((h) => {
-                const checked = completedDates(snapshot, h.id).has(today);
-                const current = streaks(
-                  completedDates(snapshot, h.id),
-                  today,
-                ).current;
+                const habitDates = completedDates(snapshot, h.id);
+                const checked = habitDates.has(today);
+                const habitStreak = streaks(habitDates, today);
                 return (
                   <article
                     key={h.id}
@@ -875,7 +873,10 @@ export default function App() {
                             : checked
                               ? "✓ 已完成 · "
                               : ""}
-                        连续 {current} 天
+                        当前连续 {habitStreak.current} 天
+                      </p>
+                      <p className="habit-history-stats">
+                        累计打卡 {habitDates.size} 天 · 最长连续 {habitStreak.longest} 天
                       </p>
                     </div>
                     <button
