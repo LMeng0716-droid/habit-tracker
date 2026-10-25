@@ -33,8 +33,9 @@ export function moveHabit(order: string[], visibleIds: string[], moving: string,
     return order;
   const all = [...new Set([...visibleIds, ...order])];
   const src = all.indexOf(moving);
+  const targetIndex = all.indexOf(target);
   all.splice(src, 1);
-  all.splice(all.indexOf(target), 0, moving);
+  all.splice(all.indexOf(target) + (src < targetIndex ? 1 : 0), 0, moving);
   return all;
 }
 export function prefsKey(project: string, base: string, user: string): string {
