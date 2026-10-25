@@ -20,3 +20,7 @@
 若需要跨设备同步图标和排序，必须先审核 `habit_mobile.habits` 的新增列、校验规则和拥有者受限的 RPC。当前分支没有修改任何数据库结构，也未运行 SQL。
 
 已在手机登录态切换前初始化本机偏好，避免条件渲染时出现 Hook 调用顺序变化。
+
+
+## Cloud sync proposal
+The follow-up branch stores emoji and order in the account-owned `habit_mobile.habits` rows. The migration is proposal-only and must not be applied until the user explicitly approves the database change. The app must only be deployed after the migration is applied and verified.
