@@ -15,6 +15,8 @@ const before: Snapshot = {
     color: 0,
     created_date: "2026-01-01",
     archived_on: null,
+    emoji: "🌱",
+    sort_order: 1024,
   })),
   checkins: [],
 };
