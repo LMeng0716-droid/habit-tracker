@@ -564,13 +564,66 @@ progress {
 }
 
 /* Device-only habit customization and phone-friendly reorder controls */
-.device-settings-note { font-size: 0.85rem; line-height: 1.6; opacity: .8; margin: 12px 0; }
-.habit-actions .habit-customize { padding: 12px 0; }
-.habit-customize label { display: block; font-size: .9rem; margin: 0 0 8px; }
-.emoji-choices { display: grid; grid-template-columns: repeat(auto-fit, minmax(42px, 1fr)); gap: 6px; }
-.emoji-choices .emoji-choice { padding: 7px; min-height: 44px; min-width: 0; font-size: 1.2rem; background: #f5f7f3; border: 1px solid #d2dfd4; border-radius: 10px; }
-.emoji-choices .emoji-choice.chosen { outline: 2px solid #23765b; outline-offset: -2px; background: #e8f2ea; }
-.reorder-actions { align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
-.drag-handle { display: inline-flex; align-items: center; justify-content: center; padding: 10px; border: 1px dashed #729b85; border-radius: 10px; min-height: 44px; cursor: grab; user-select: none; -webkit-user-select: none; touch-action: none; }
-.drag-handle:active { cursor: grabbing; }
-@media (max-width: 400px) { .reorder-actions button { flex: 1; } .drag-handle { width: 100%; } }
+.device-settings-note {
+  font-size: 0.85rem;
+  line-height: 1.6;
+  opacity: 0.8;
+  margin: 12px 0;
+}
+.habit-actions .habit-customize {
+  padding: 12px 0;
+}
+.habit-customize label {
+  display: block;
+  font-size: 0.9rem;
+  margin: 0 0 8px;
+}
+.emoji-choices {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(42px, 1fr));
+  gap: 6px;
+}
+.emoji-choices .emoji-choice {
+  padding: 7px;
+  min-height: 44px;
+  min-width: 0;
+  font-size: 1.2rem;
+  background: #f5f7f3;
+  border: 1px solid #d2dfd4;
+  border-radius: 10px;
+}
+.emoji-choices .emoji-choice.chosen {
+  outline: 2px solid #23765b;
+  outline-offset: -2px;
+  background: #e8f2ea;
+}
+.reorder-actions {
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+.drag-handle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px;
+  border: 1px dashed #729b85;
+  border-radius: 10px;
+  min-height: 44px;
+  cursor: grab;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: none;
+}
+.drag-handle:active {
+  cursor: grabbing;
+}
+@media (max-width: 400px) {
+  .reorder-actions button {
+    flex: 1;
+  }
+  .drag-handle {
+    width: 100%;
+  }
+}

@@ -10,7 +10,15 @@ import {
   type CheckinOperations,
 } from "./checkins";
 import { REQUEST_TIMEOUT } from "./request";
-import { EMOJI_CHOICES, emptyHabitPrefs, moveHabit, parseHabitPrefs, prefsKey, sortedHabits, type HabitPrefs } from "./habit-prefs";
+import {
+  EMOJI_CHOICES,
+  emptyHabitPrefs,
+  moveHabit,
+  parseHabitPrefs,
+  prefsKey,
+  sortedHabits,
+  type HabitPrefs,
+} from "./habit-prefs";
 import { policyKey, readTimes, sessionExpired } from "./session-policy";
 import { PASSWORD_POLICY, passwordRules, passwordValid } from "./password";
 import { InstallHelp } from "./InstallHelp";
@@ -763,7 +771,10 @@ export default function App() {
   const deviceKey = session?.user.id
     ? prefsKey(projectUrl, import.meta.env.BASE_URL, session.user.id)
     : "";
-  const active = sortedHabits(snapshot?.habits.filter((h) => !h.archived_on) ?? [], prefs.order);
+  const active = sortedHabits(
+    snapshot?.habits.filter((h) => !h.archived_on) ?? [],
+    prefs.order,
+  );
   function savePrefs(next: HabitPrefs) {
     if (!deviceKey) return;
     try {
@@ -771,12 +782,22 @@ export default function App() {
       setPrefs(next);
       setPrefWarning("");
     } catch {
-      setPrefWarning("此设备无法保存个性化设置，请检查浏览器存储权限。云端打卡数据不受影响。");
+      setPrefWarning(
+        "此设备无法保存个性化设置，请检查浏览器存储权限。云端打卡数据不受影响。",
+      );
     }
   }
   function reorder(source: string, target: string) {
     if (!fresh || busy || Object.keys(operations).length) return;
-    savePrefs({ ...prefs, order: moveHabit(prefs.order, active.map((h) => h.id), source, target) });
+    savePrefs({
+      ...prefs,
+      order: moveHabit(
+        prefs.order,
+        active.map((h) => h.id),
+        source,
+        target,
+      ),
+    });
   }
   const selected =
     snapshot?.habits.find((h) => h.id === selectedId) ?? snapshot?.habits[0];
@@ -879,7 +900,10 @@ export default function App() {
             >
               创建习惯
             </button>
-            <p className="device-settings-note">长按排序手柄或点击上移／下移调整顺序。Emoji 与排序仅保存在本设备；习惯名称、归档和打卡仍同步到云端。</p>
+            <p className="device-settings-note">
+              长按排序手柄或点击上移／下移调整顺序。Emoji
+              与排序仅保存在本设备；习惯名称、归档和打卡仍同步到云端。
+            </p>
             <div className="habits">
               {active.map((h) => {
                 const habitDates = completedDates(snapshot, h.id);
@@ -894,7 +918,8 @@ export default function App() {
                     onDragOver={(event) => event.preventDefault()}
                     onDrop={(event) => {
                       event.preventDefault();
-                      if (draggingHabit.current) reorder(draggingHabit.current, h.id);
+                      if (draggingHabit.current)
+                        reorder(draggingHabit.current, h.id);
                       draggingHabit.current = null;
                     }}
                   >
@@ -970,7 +995,11 @@ export default function App() {
                           className="secondary"
                           disabled={disabled || hasOperations}
                           onClick={() => {
-                            if (window.confirm(`归档「${h.name}」？历史打卡会保留，可在下方恢复。`))
+                            if (
+                              window.confirm(
+                                `归档「${h.name}」？历史打卡会保留，可在下方恢复。`,
+                              )
+                            )
                               void mutate("archive_habit", { p_id: h.id });
                           }}
                         >
@@ -981,40 +1010,99 @@ export default function App() {
                         <label>习惯图标（仅本机）</label>
                         <div className="emoji-choices">
                           {EMOJI_CHOICES.map((emoji) => (
-                            <button type="button" key={emoji}
+                            <button
+                              type="button"
+                              key={emoji}
                               className={`emoji-choice ${(prefs.icons[h.id] ?? "🌱") === emoji ? "chosen" : ""}`}
                               aria-label={`为${h.name}选择${emoji}`}
-                              aria-pressed={(prefs.icons[h.id] ?? "🌱") === emoji}
-                              onClick={() => savePrefs({ ...prefs, icons: { ...prefs.icons, [h.id]: emoji } })}
-                            >{emoji}</button>
+                              aria-pressed={
+                                (prefs.icons[h.id] ?? "🌱") === emoji
+                              }
+                              onClick={() =>
+                                savePrefs({
+                                  ...prefs,
+                                  icons: { ...prefs.icons, [h.id]: emoji },
+                                })
+                              }
+                            >
+                              {emoji}
+                            </button>
                           ))}
                         </div>
                       </div>
                       <div className="row reorder-actions">
-                        <button type="button" className="secondary"
-                          disabled={disabled || hasOperations || active[0]?.id === h.id}
-                          onClick={() => reorder(h.id, active[active.findIndex((item) => item.id === h.id) - 1]?.id ?? h.id)}
-                        >上移</button>
-                        <button type="button" className="secondary"
-                          disabled={disabled || hasOperations || active[active.length - 1]?.id === h.id}
-                          onClick={() => reorder(h.id, active[active.findIndex((item) => item.id === h.id) + 1]?.id ?? h.id)}
-                        >下移</button>
+                        <button
+                          type="button"
+                          className="secondary"
+                          disabled={
+                            disabled || hasOperations || active[0]?.id === h.id
+                          }
+                          onClick={() =>
+                            reorder(
+                              h.id,
+                              active[
+                                active.findIndex((item) => item.id === h.id) - 1
+                              ]?.id ?? h.id,
+                            )
+                          }
+                        >
+                          上移
+                        </button>
+                        <button
+                          type="button"
+                          className="secondary"
+                          disabled={
+                            disabled ||
+                            hasOperations ||
+                            active[active.length - 1]?.id === h.id
+                          }
+                          onClick={() =>
+                            reorder(
+                              h.id,
+                              active[
+                                active.findIndex((item) => item.id === h.id) + 1
+                              ]?.id ?? h.id,
+                            )
+                          }
+                        >
+                          下移
+                        </button>
                         <span
-                          className="drag-handle" role="img" aria-label={`拖动排序：${h.name}`}
+                          className="drag-handle"
+                          role="img"
+                          aria-label={`拖动排序：${h.name}`}
                           draggable={!disabled && !hasOperations}
-                          onDragStart={() => { draggingHabit.current = h.id; }}
-                          onDragEnd={() => { draggingHabit.current = null; }}
-                          onTouchStart={() => { touchHabit.current = h.id; }}
+                          onDragStart={() => {
+                            draggingHabit.current = h.id;
+                          }}
+                          onDragEnd={() => {
+                            draggingHabit.current = null;
+                          }}
+                          onTouchStart={() => {
+                            touchHabit.current = h.id;
+                          }}
                           onTouchEnd={(event) => {
                             const point = event.changedTouches[0];
-                            const target = document.elementFromPoint(point.clientX, point.clientY)?.closest("[data-habit-id]");
-                            if (touchHabit.current && target instanceof HTMLElement) {
-                              reorder(touchHabit.current, target.dataset.habitId ?? "");
+                            const target = document
+                              .elementFromPoint(point.clientX, point.clientY)
+                              ?.closest("[data-habit-id]");
+                            if (
+                              touchHabit.current &&
+                              target instanceof HTMLElement
+                            ) {
+                              reorder(
+                                touchHabit.current,
+                                target.dataset.habitId ?? "",
+                              );
                             }
                             touchHabit.current = null;
                           }}
-                          onTouchCancel={() => { touchHabit.current = null; }}
-                        >☰ 按住拖动</span>
+                          onTouchCancel={() => {
+                            touchHabit.current = null;
+                          }}
+                        >
+                          ☰ 按住拖动
+                        </span>
                       </div>
                     </details>
                   </article>
