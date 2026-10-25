@@ -22,7 +22,9 @@ alter table habit_mobile.habits
   add column if not exists emoji text not null default '🌱',
   add column if not exists sort_order bigint not null default 0;
 
--- Existing habits retain their rows unchanged. The zero sort rank preserves\n-- the original created_at/id ordering until a user reorders.\ncreate or replace function habit_mobile.guard_habit()
+-- Existing habits retain their rows unchanged. The zero sort rank preserves
+-- the original created_at/id ordering until a user reorders.
+create or replace function habit_mobile.guard_habit()
 returns trigger language plpgsql set search_path='' as $function$
 declare
   today date := (clock_timestamp() at time zone 'Asia/Shanghai')::date;
