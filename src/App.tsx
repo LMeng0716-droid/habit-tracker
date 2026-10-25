@@ -10,10 +10,7 @@ import {
   type CheckinOperations,
 } from "./checkins";
 import { REQUEST_TIMEOUT } from "./request";
-import {
-  EMOJI_CHOICES,
-  moveHabit,
-} from "./habit-prefs";
+import { EMOJI_CHOICES, moveHabit } from "./habit-prefs";
 import { policyKey, readTimes, sessionExpired } from "./session-policy";
 import { PASSWORD_POLICY, passwordRules, passwordValid } from "./password";
 import { InstallHelp } from "./InstallHelp";
@@ -746,10 +743,17 @@ export default function App() {
       />
     );
 
-  const active = [...(snapshot?.habits.filter((h) => !h.archived_on) ?? [])].sort((a, b) => a.sort_order - b.sort_order);
+  const active = [
+    ...(snapshot?.habits.filter((h) => !h.archived_on) ?? []),
+  ].sort((a, b) => a.sort_order - b.sort_order);
   function reorder(source: string, target: string) {
     if (!fresh || busy || Object.keys(operations).length) return;
-    const ids = moveHabit(active.map((h) => h.id), active.map((h) => h.id), source, target);
+    const ids = moveHabit(
+      active.map((h) => h.id),
+      active.map((h) => h.id),
+      source,
+      target,
+    );
     if (ids.some((id, index) => id !== active[index]?.id))
       void mutate("reorder_habits", { p_ids: ids });
   }

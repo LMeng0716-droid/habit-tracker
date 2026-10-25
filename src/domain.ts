@@ -128,7 +128,8 @@ export function parseSnapshot(value: unknown): Snapshot {
       !validDate(h.created_date) ||
       !(h.archived_on === null || validDate(h.archived_on)) ||
       (h.emoji !== undefined && typeof h.emoji !== "string") ||
-      (h.sort_order !== undefined && (!Number.isInteger(h.sort_order) || (h.sort_order as number) < 0))
+      (h.sort_order !== undefined &&
+        (!Number.isInteger(h.sort_order) || (h.sort_order as number) < 0))
     )
       throw new Error("云端习惯格式不正确。");
     return {
@@ -138,7 +139,8 @@ export function parseSnapshot(value: unknown): Snapshot {
       created_date: h.created_date,
       archived_on: h.archived_on,
       emoji: typeof h.emoji === "string" ? h.emoji : "🌱",
-      sort_order: typeof h.sort_order === "number" ? h.sort_order : (index + 1) * 1024,
+      sort_order:
+        typeof h.sort_order === "number" ? h.sort_order : (index + 1) * 1024,
     };
   });
   const checkins = value.checkins.map((c: unknown): Checkin => {
