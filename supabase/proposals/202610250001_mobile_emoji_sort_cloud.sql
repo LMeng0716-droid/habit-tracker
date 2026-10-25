@@ -20,20 +20,9 @@ end $check$;
 
 alter table habit_mobile.habits
   add column if not exists emoji text not null default '🌱',
-  add column if not exists sort_order bigint;
+  add column if not exists sort_order bigint not null default 0;
 
--- One-time deterministic initialization. Existing rows keep identity/history.
-with ranked as (
-  select user_id, id,
-    row_number() over (partition by user_id order by created_at,id) * 1024 as position
-  from habit_mobile.habits
-)
-update habit_mobile.habits h
-  set sort_order=ranked.position
-from ranked
-where h.user_id=ranked.user_id and h.id=ranked.id and h.sort_order is null;
-
-create or replace function habit_mobile.guard_habit()
+-- Existing habits retain their rows unchanged. The zero sort rank preserves\n-- the original created_at/id ordering until a user reorders.\ncreate or replace function habit_mobile.guard_habit()
 returns trigger language plpgsql set search_path='' as $function$
 declare
   today date := (clock_timestamp() at time zone 'Asia/Shanghai')::date;
@@ -71,7 +60,6 @@ begin
 end $function$;
 
 alter table habit_mobile.habits
-  alter column sort_order set not null,
   add constraint habit_mobile_emoji_allowed
     check (emoji in ('🌱','📖','💪','🧘','💤','💧','🥗','🏃','🪥','🛁','🧴','🎨','🎯','☀️','❤️','✨')),
   add constraint habit_mobile_sort_nonnegative check (sort_order >= 0);
