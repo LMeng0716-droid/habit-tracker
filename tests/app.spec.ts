@@ -304,8 +304,7 @@ test("login, daily checkin/cancel and logout recovery from cloud", async ({
   ).toBeVisible();
   await page.reload();
   await login(page);
-  await page.getByText("更多操作", { exact: true }).click();
-  await page.getByRole("button", { name: "查看历史" }).click();
+  await page.getByRole("button", { name: "历史", exact: true }).click();
   await expect(
     page.getByRole("button", { name: "2026-10-09 已打卡" }),
   ).toHaveAttribute("aria-pressed", "true");
@@ -323,17 +322,16 @@ test("create, edit, historical checkin and archive preserves today's completion"
   const card = page
     .locator("article")
     .filter({ has: page.getByRole("heading", { name: "运动", exact: true }) });
-  await card.getByText("更多操作", { exact: true }).click();
-  await card.getByRole("button", { name: "编辑", exact: true }).click();
+  await page.getByRole("button", { name: "账号", exact: true }).click();
+  await page.getByRole("button", { name: "管理习惯 · 编辑与排序" }).click();
+  await page.getByRole("button", { name: /运动.*›/ }).click();
   await page.getByLabel("名称", { exact: true }).fill("运动十分钟");
   await page.getByRole("button", { name: "保存习惯" }).click();
   const updated = page.locator("article").filter({
     has: page.getByRole("heading", { name: "运动十分钟", exact: true }),
   });
   await updated.getByRole("button", { name: "打卡", exact: true }).click();
-  if (!(await updated.getByRole("button", { name: "查看历史" }).isVisible()))
-    await updated.getByText("更多操作", { exact: true }).click();
-  await updated.getByRole("button", { name: "查看历史" }).click();
+  await page.getByRole("button", { name: "历史", exact: true }).click();
   await expect(
     page.getByRole("button", { name: "2026-10-11 已打卡" }),
   ).toBeEnabled();
@@ -350,8 +348,7 @@ test("historical dates, denominator and streak", async ({ page }) => {
   await backend(page);
   await page.goto("./");
   await login(page);
-  await page.getByText("更多操作", { exact: true }).click();
-  await page.getByRole("button", { name: "查看历史" }).click();
+  await page.getByRole("button", { name: "历史", exact: true }).click();
   await expect(page.getByText("当前连续 2 天 · 最长连续 2 天")).toBeVisible();
   await expect(page.getByText("本月 2/11 天 · 完成率 18%")).toBeVisible();
   await page.getByRole("button", { name: "2026-10-08 未打卡" }).click();
@@ -1125,7 +1122,8 @@ test("refresh seeing committed data before write acknowledgements cannot swallow
   await expect(
     page.getByRole("button", { name: "刷新", exact: true }),
   ).toBeEnabled();
-  await expect(page.locator(".celebration-layer")).toHaveCount(0);
+  // Immediate visual feedback is now shown while cloud writes are pending.
+  await expect(page.locator(".celebration-layer")).toBeVisible();
   api.releaseWrite("reading");
   await expect(reading.locator(".card-success strong")).toHaveText(
     "完成啦！✨",
@@ -1139,6 +1137,20 @@ test("refresh seeing committed data before write acknowledgements cannot swallow
     "今天的目标全部完成！🌱",
   );
   expect(api.writes()).toBe(2);
+});
+
+test("manage habits from account and keep the daily cards minimal", async ({ page }) => {
+  await backend(page);
+  await page.goto("./");
+  await login(page);
+  await expect(page.getByText("更多操作", { exact: true })).toHaveCount(0);
+  await page.getByRole("button", { name: "账号", exact: true }).click();
+  await page.getByRole("button", { name: "管理习惯 · 编辑与排序" }).click();
+  await expect(page.getByRole("heading", { name: "管理习惯" })).toBeVisible();
+  await expect(page.getByRole("button", { name: /阅读.*›/ })).toBeVisible();
+  await page.getByRole("button", { name: /阅读.*›/ }).click();
+  await expect(page.getByLabel("自定义习惯 Emoji")).toBeVisible();
+  await page.getByLabel("自定义习惯 Emoji").fill("☀️");
 });
 
 test("reload recovery waits for confirmed asynchronous login, not the submit click", async ({
