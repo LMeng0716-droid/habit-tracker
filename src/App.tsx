@@ -104,6 +104,10 @@ export default function App() {
   const draggingHabit = useRef<string | null>(null);
   const touchHabit = useRef<string | null>(null);
   const [page, setPage] = useState<"today" | "history" | "account">("today");
+  const [managing, setManaging] = useState(false);
+  const [manageId, setManageId] = useState("");
+  const [emojiDraft, setEmojiDraft] = useState("");
+  const [draggingId, setDraggingId] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState("");
   const [month, setMonth] = useState(businessDate().slice(0, 7));
   const account = useRef<string | null>(null);
@@ -162,6 +166,8 @@ export default function App() {
         setSnapshot(null);
         setFresh(false);
         setForm(null);
+        setManaging(false);
+        setManageId("");
         setSelectedId("");
         setPage("today");
         setError("");
@@ -440,6 +446,17 @@ export default function App() {
       [habitId]: { sequence, habitId, date, completed, status: "saving" },
     });
     clearCelebration(habitId, !completed);
+    // Visual feedback happens at tap time; network persistence remains pending.
+    if (completed) {
+      const predicted = applyCheckin(startedSnapshot, habitId, date, true);
+      const celebration = celebrationFor(startedSnapshot, predicted, habitId, date, true, businessDate());
+      if (celebration.ordinary)
+        playCelebration({
+          sequence, habitId,
+          name: predicted.habits.find((h) => h.id === habitId)?.name ?? "习惯",
+          all: celebration.all,
+        });
+    }
     setNotice("");
     setError("");
     const current = () =>
@@ -463,34 +480,10 @@ export default function App() {
       setNotice(
         completed ? "完成啦 ✨ 已保存到云端。" : "已取消打卡并保存到云端。",
       );
-      const celebration = celebrationFor(
-        startedSnapshot,
-        after,
-        habitId,
-        date,
-        completed,
-        businessDate(),
-      );
-      if (celebration.ordinary) {
-        const card = document.querySelector(
-          `[data-habit-id="${CSS.escape(habitId)}"]`,
-        );
-        const dock =
-          card && card.getBoundingClientRect().top > window.innerHeight / 2
-            ? "top"
-            : "bottom";
-        playCelebration({
-          sequence,
-          habitId,
-          name: after.habits.find((h) => h.id === habitId)?.name ?? "习惯",
-          all:
-            celebration.all &&
-            !Object.values(next).some((op) => op.date === after.today),
-          dock,
-        });
-      }
+
     } catch (e) {
       if (!current()) return;
+      clearCelebration(habitId, true);
       writeRevision.current++;
       // Discard only this provisional overlay; preserve other pending habits.
       updateOperations({
@@ -794,6 +787,44 @@ export default function App() {
         {page === "account" ? (
           <section>
             <h2>账号</h2>
+            <button className="manage-entry" onClick={() => { setManaging((v) => !v); setForm(null); }}>
+              {managing ? "← 返回账号" : "管理习惯 · 编辑与排序"}
+            </button>
+            {managing && (
+              <div className="manage-panel">
+                <h3>管理习惯</h3>
+                <p className="muted">点击习惯进行编辑；按住左侧拖动手柄直接调整顺序。</p>
+                <div className="manage-list">
+                  {active.map((h) => (
+                    <div className={`manage-item ${draggingId === h.id ? "is-dragging" : ""}`} key={h.id} data-manage-id={h.id}
+                      onDragOver={(e) => e.preventDefault()}
+                      onDrop={(e) => { e.preventDefault(); if (draggingHabit.current) reorder(draggingHabit.current, h.id); draggingHabit.current = null; setDraggingId(null); }}>
+                      <span className="manage-drag" role="button" tabIndex={0} draggable={!disabled && !hasOperations}
+                        aria-label={`拖动${h.name}排序`}
+                        onDragStart={() => { draggingHabit.current = h.id; setDraggingId(h.id); }}
+                        onDragEnd={() => { draggingHabit.current = null; setDraggingId(null); }}
+                        onPointerDown={(event) => { if (event.pointerType === "touch") { touchHabit.current = h.id; setDraggingId(h.id); } }}
+                        onPointerUp={(event) => { if (touchHabit.current) { const target = document.elementFromPoint(event.clientX,event.clientY)?.closest("[data-manage-id]"); if (target instanceof HTMLElement) reorder(touchHabit.current,target.dataset.manageId ?? ""); touchHabit.current = null; setDraggingId(null); } }}
+                        onPointerCancel={() => { touchHabit.current = null; setDraggingId(null); }}>
+                        ☰
+                      </span>
+                      <button className="manage-pick" onClick={() => { setManageId(h.id); setEmojiDraft(h.emoji); setForm({ id:h.id, name:h.name, color:h.color, creating:false }); }}>
+                        <span>{h.emoji}</span> {h.name} <span>›</span>
+                      </button>
+                    </div>
+                  ))}
+                </div>
+                {snapshot.habits.some((h) => h.archived_on) && (
+                  <details className="manage-archive"><summary>已归档习惯</summary>
+                    {snapshot.habits.filter((h) => h.archived_on).map((h) => <div className="manage-item" key={h.id}>
+                      <span>{h.emoji} {h.name}</span>
+                      <button className="secondary" disabled={disabled || hasOperations}
+                        onClick={() => { if (window.confirm(`恢复「${h.name}」？原记录将保留。`)) void mutate("restore_habit",{p_id:h.id}); }}>恢复</button>
+                    </div>)}
+                  </details>
+                )}
+              </div>
+            )}
             <p className="email">{session.user.email}</p>
             <p>
               习惯和打卡记录保存在 Supabase。更换手机后登录同一账号即可恢复。
@@ -858,9 +889,6 @@ export default function App() {
             >
               创建习惯
             </button>
-            <p className="device-settings-note">
-              Emoji 与排序现已同步到云端，更换设备后登录同一账号即可保留。
-            </p>
             <div className="habits">
               {active.map((h) => {
                 const habitDates = completedDates(snapshot, h.id);
@@ -893,7 +921,7 @@ export default function App() {
                       )}
                       <p>
                         {operations[h.id]?.status === "saving"
-                          ? "正在保存 · "
+                          ? "✓ 已打卡 · 同步中 · "
                           : operations[h.id]?.status === "uncertain"
                             ? "待核对 · "
                             : checked
@@ -922,186 +950,11 @@ export default function App() {
                         {checked ? "✓" : "打卡"}
                       </span>
                     </button>
-                    <details className="habit-actions">
-                      <summary>更多操作</summary>
-                      <div className="row">
-                        <button
-                          className="secondary"
-                          onClick={() => {
-                            setSelectedId(h.id);
-                            setPage("history");
-                          }}
-                        >
-                          查看历史
-                        </button>
-                        <button
-                          className="secondary"
-                          disabled={disabled || hasOperations}
-                          onClick={() =>
-                            setForm({
-                              id: h.id,
-                              name: h.name,
-                              color: h.color,
-                              creating: false,
-                            })
-                          }
-                        >
-                          编辑
-                        </button>
-                        <button
-                          className="secondary"
-                          disabled={disabled || hasOperations}
-                          onClick={() => {
-                            if (
-                              window.confirm(
-                                `归档「${h.name}」？历史打卡会保留，可在下方恢复。`,
-                              )
-                            )
-                              void mutate("archive_habit", { p_id: h.id });
-                          }}
-                        >
-                          归档
-                        </button>
-                      </div>
-                      <div className="habit-customize">
-                        <label>习惯图标（仅本机）</label>
-                        <div className="emoji-choices">
-                          {EMOJI_CHOICES.map((emoji) => (
-                            <button
-                              type="button"
-                              key={emoji}
-                              className={`emoji-choice ${h.emoji === emoji ? "chosen" : ""}`}
-                              aria-label={`为${h.name}选择${emoji}`}
-                              aria-pressed={h.emoji === emoji}
-                              disabled={
-                                disabled || hasOperations || h.emoji === emoji
-                              }
-                              onClick={() =>
-                                void mutate("set_habit_emoji", {
-                                  p_id: h.id,
-                                  p_emoji: emoji,
-                                })
-                              }
-                            >
-                              {emoji}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                      <div className="row reorder-actions">
-                        <button
-                          type="button"
-                          className="secondary"
-                          disabled={
-                            disabled || hasOperations || active[0]?.id === h.id
-                          }
-                          onClick={() =>
-                            reorder(
-                              h.id,
-                              active[
-                                active.findIndex((item) => item.id === h.id) - 1
-                              ]?.id ?? h.id,
-                            )
-                          }
-                        >
-                          上移
-                        </button>
-                        <button
-                          type="button"
-                          className="secondary"
-                          disabled={
-                            disabled ||
-                            hasOperations ||
-                            active[active.length - 1]?.id === h.id
-                          }
-                          onClick={() =>
-                            reorder(
-                              h.id,
-                              active[
-                                active.findIndex((item) => item.id === h.id) + 1
-                              ]?.id ?? h.id,
-                            )
-                          }
-                        >
-                          下移
-                        </button>
-                        <span
-                          className="drag-handle"
-                          role="img"
-                          aria-label={`拖动排序：${h.name}`}
-                          draggable={!disabled && !hasOperations}
-                          onDragStart={() => {
-                            draggingHabit.current = h.id;
-                          }}
-                          onDragEnd={() => {
-                            draggingHabit.current = null;
-                          }}
-                          onTouchStart={() => {
-                            touchHabit.current = h.id;
-                          }}
-                          onTouchEnd={(event) => {
-                            const point = event.changedTouches[0];
-                            const target = document
-                              .elementFromPoint(point.clientX, point.clientY)
-                              ?.closest("[data-habit-id]");
-                            if (
-                              touchHabit.current &&
-                              target instanceof HTMLElement
-                            ) {
-                              reorder(
-                                touchHabit.current,
-                                target.dataset.habitId ?? "",
-                              );
-                            }
-                            touchHabit.current = null;
-                          }}
-                          onTouchCancel={() => {
-                            touchHabit.current = null;
-                          }}
-                        >
-                          ☰ 按住拖动
-                        </span>
-                      </div>
-                    </details>
+
                   </article>
                 );
               })}
             </div>
-            {snapshot.habits.some((h) => h.archived_on) && (
-              <details>
-                <summary>已归档习惯</summary>
-                {snapshot.habits
-                  .filter((h) => h.archived_on)
-                  .map((h) => (
-                    <div className="archived-habit-actions" key={h.id}>
-                      <button
-                        className="secondary archived"
-                        onClick={() => {
-                          setSelectedId(h.id);
-                          setPage("history");
-                        }}
-                      >
-                        {h.name} · 查看历史
-                      </button>
-                      <button
-                        className="secondary"
-                        disabled={disabled || hasOperations}
-                        aria-label={`恢复习惯：${h.name}`}
-                        onClick={() => {
-                          if (
-                            window.confirm(
-                              `恢复「${h.name}」？原有打卡记录保留，恢复后可以继续打卡。`,
-                            )
-                          )
-                            void mutate("restore_habit", { p_id: h.id });
-                        }}
-                      >
-                        恢复习惯
-                      </button>
-                    </div>
-                  ))}
-              </details>
-            )}
           </section>
         ) : (
           <section>
@@ -1205,7 +1058,7 @@ export default function App() {
             )}
           </section>
         )}
-        {form && (
+        {form && (form.creating || (page === "account" && managing)) && (
           <section className="editor" aria-label="习惯编辑">
             <h2>{form.creating ? "创建习惯" : "编辑习惯"}</h2>
             <form
@@ -1251,6 +1104,25 @@ export default function App() {
                   ))}
                 </select>
               </label>
+              {!form.creating && managing && (
+                <label>
+                  Emoji（使用手机键盘输入）
+                  <input aria-label="自定义习惯 Emoji" inputMode="text" maxLength={16}
+                    value={emojiDraft} onChange={(e) => setEmojiDraft(e.target.value)}
+                    placeholder="例如 🌞 🏊 🥛" />
+                  <small>仅支持单个 Emoji，云端保存前会检查格式。</small>
+                  <button type="button" className="secondary" disabled={disabled || hasOperations || !emojiDraft.trim()}
+                    onClick={() => void mutate("set_habit_emoji",{p_id:form.id,p_emoji:emojiDraft.trim()})}>
+                    保存图标
+                  </button>
+                </label>
+              )}
+              {!form.creating && managing && (
+                <button type="button" className="secondary" disabled={disabled || hasOperations}
+                  onClick={() => { if(window.confirm(`归档「${form.name}」？可以在管理习惯中恢复。`)) void mutate("archive_habit",{p_id:form.id}).then(ok=>{if(ok)setForm(null);}); }}>
+                  归档这个习惯
+                </button>
+              )}
               <div className="row">
                 <button
                   disabled={disabled || hasOperations || !form.name.trim()}
