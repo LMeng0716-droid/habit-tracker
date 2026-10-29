@@ -710,3 +710,21 @@ progress {
     padding: 8px;
   }
 }
+
+/* Touch feedback starts immediately while the cloud write is in flight. */
+.card[aria-busy="true"] .check-button {
+  animation: tap-pulse 0.28s ease-out both;
+  box-shadow: 0 0 0 5px rgba(35, 99, 78, 0.12);
+}
+.card[aria-busy="true"].completed {
+  border-color: #2a8668;
+  background: #f3fbf5;
+}
+@keyframes tap-pulse {
+  0% { transform: scale(0.91); }
+  70% { transform: scale(1.045); }
+  100% { transform: scale(1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .card[aria-busy="true"] .check-button { animation: none; }
+}
