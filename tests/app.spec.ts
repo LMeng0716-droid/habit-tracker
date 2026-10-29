@@ -160,7 +160,7 @@ async function backend(page: Page, snapshot = fixture()) {
       writes++;
       const args = request.postDataJSON() as Record<
         string,
-        string | number | boolean
+        string | number | boolean | string[]
       >;
       const habitId = String(args.p_habit_id ?? args.p_id);
       const hold = writeHolds.get(habitId);
@@ -189,6 +189,15 @@ async function backend(page: Page, snapshot = fixture()) {
         const habit = snapshot.habits.find((h) => h.id === args.p_id)!;
         habit.name = String(args.p_name);
         habit.color = Number(args.p_color);
+      }
+      if (rpc === "set_habit_emoji") {
+        snapshot.habits.find((h) => h.id === args.p_id)!.emoji = String(args.p_emoji);
+      }
+      if (rpc === "reorder_habits") {
+        (args.p_ids as string[]).forEach((id, index) => {
+          const habit = snapshot.habits.find((h) => h.id === id);
+          if (habit) habit.sort_order = (index + 1) * 1024;
+        });
       }
       if (rpc === "archive_habit")
         snapshot.habits.find((h) => h.id === args.p_id)!.archived_on = today;
@@ -1155,6 +1164,31 @@ test("manage habits from account and keep the daily cards minimal", async ({
   await page.getByRole("button", { name: /阅读.*›/ }).click();
   await expect(page.getByLabel("自定义习惯 Emoji")).toBeVisible();
   await page.getByLabel("自定义习惯 Emoji").fill("☀️");
+});
+
+test("Today drag handle moves habits; Account editor has two fields and one save action", async ({ page }) => {
+  const api = await backend(page, twoHabits());
+  await page.goto("./");
+  await login(page);
+  const drag = page.getByRole("button", { name: "拖动排序：阅读" });
+  await expect(drag).toBeVisible();
+  await drag.focus();
+  await drag.press("ArrowDown");
+  await expect.poll(() => api.snapshot.habits.find(h => h.id === "reading")?.sort_order).toBe(2048);
+  await page.getByRole("button", { name: "账号", exact: true }).click();
+  await page.getByRole("button", { name: "编辑习惯" }).click();
+  await expect(page.locator(".manage-drag")).toHaveCount(0);
+  await page.getByRole("button", { name: /阅读.*›/ }).click();
+  const editor = page.getByRole("region", { name: "习惯编辑" });
+  await expect(editor.getByText("颜色", { exact: true })).toHaveCount(0);
+  await expect(editor.getByRole("button", { name: "保存图标" })).toHaveCount(0);
+  await expect(editor.locator("button")).toHaveCount(3);
+  await expect(editor.getByRole("button", { name: "保存修改" })).toBeDisabled();
+  await page.getByLabel("名称", { exact: true }).fill("阅读学习");
+  await page.getByLabel("自定义习惯 Emoji").fill("🦄");
+  await editor.getByRole("button", { name: "保存修改" }).click();
+  await expect.poll(() => api.snapshot.habits.find(h => h.id === "reading")?.name).toBe("阅读学习");
+  await expect.poll(() => api.snapshot.habits.find(h => h.id === "reading")?.emoji).toBe("🦄");
 });
 
 test("reload recovery waits for confirmed asynchronous login, not the submit click", async ({
