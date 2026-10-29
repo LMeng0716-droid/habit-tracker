@@ -1122,8 +1122,8 @@ test("refresh seeing committed data before write acknowledgements cannot swallow
   await expect(
     page.getByRole("button", { name: "刷新", exact: true }),
   ).toBeEnabled();
-  // Immediate visual feedback is now shown while cloud writes are pending.
-  await expect(page.locator(".celebration-layer")).toBeVisible();
+  // Button state changes instantly, celebration appears only on confirmed save.
+  await expect(page.locator(".celebration-layer")).toHaveCount(0);
   api.releaseWrite("reading");
   await expect(reading.locator(".card-success strong")).toHaveText(
     "完成啦！✨",
