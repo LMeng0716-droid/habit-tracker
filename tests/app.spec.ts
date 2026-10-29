@@ -1182,6 +1182,23 @@ test("Today shows drag handles while Account only edits name and emoji", async (
   ).toHaveCount(0);
 });
 
+test("one Save Changes persists both changed name and compound keyboard emoji", async ({page}) => {
+  const api = await backend(page);
+  await page.goto("./");
+  await login(page);
+  await page.getByRole("button", {name:"账号",exact:true}).click();
+  await page.getByRole("button", {name:"编辑习惯",exact:true}).click();
+  await page.getByRole("button", {name:/阅读.*›/}).click();
+  await page.getByLabel("名称",{exact:true}).fill("早间阅读");
+  await page.getByLabel("自定义习惯 Emoji").fill("👩‍⚕️");
+  await page.getByRole("button",{name:"保存修改"}).click();
+  await expect(page.getByRole("heading",{name:"编辑习惯",exact:true})).toHaveCount(0);
+  await page.getByRole("button",{name:"今天",exact:true}).click();
+  await expect(page.getByRole("heading",{name:"早间阅读"})).toBeVisible();
+  expect(api.snapshot.habits[0].name).toBe("早间阅读");
+  expect(api.snapshot.habits[0].emoji).toBe("👩‍⚕️");
+});
+
 test("reload recovery waits for confirmed asynchronous login, not the submit click", async ({
   page,
 }) => {
