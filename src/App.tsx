@@ -105,7 +105,6 @@ export default function App() {
   const touchHabit = useRef<string | null>(null);
   const [page, setPage] = useState<"today" | "history" | "account">("today");
   const [managing, setManaging] = useState(false);
-  const [manageId, setManageId] = useState("");
   const [emojiDraft, setEmojiDraft] = useState("");
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState("");
@@ -167,7 +166,6 @@ export default function App() {
         setFresh(false);
         setForm(null);
         setManaging(false);
-        setManageId("");
         setSelectedId("");
         setPage("today");
         setError("");
@@ -808,7 +806,7 @@ export default function App() {
                         onPointerCancel={() => { touchHabit.current = null; setDraggingId(null); }}>
                         ☰
                       </span>
-                      <button className="manage-pick" onClick={() => { setManageId(h.id); setEmojiDraft(h.emoji); setForm({ id:h.id, name:h.name, color:h.color, creating:false }); }}>
+                      <button className="manage-pick" onClick={() => { setEmojiDraft(h.emoji); setForm({ id:h.id, name:h.name, color:h.color, creating:false }); }}>
                         <span>{h.emoji}</span> {h.name} <span>›</span>
                       </button>
                     </div>
@@ -921,7 +919,7 @@ export default function App() {
                       )}
                       <p>
                         {operations[h.id]?.status === "saving"
-                          ? "✓ 已打卡 · 同步中 · "
+                          ? (operations[h.id]?.completed ? "✓ 已打卡 · 同步中 · " : "正在取消 · 同步中 · ")
                           : operations[h.id]?.status === "uncertain"
                             ? "待核对 · "
                             : checked
