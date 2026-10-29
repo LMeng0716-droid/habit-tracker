@@ -785,8 +785,8 @@ export default function App() {
     !emojiChanged ||
     (emojiDraft.trim().length > 0 &&
       emojiDraft.trim().length <= 16 &&
-      !/[\\p{Cc}\\p{Cf}]/u.test(emojiDraft.trim()) &&
-      /[\\p{Extended_Pictographic}\\p{Regional_Indicator}\\u20E3]/u.test(
+      !/[\p{Cc}]/u.test(emojiDraft.trim()) &&
+      /[\p{Extended_Pictographic}\p{Regional_Indicator}\u20E3]/u.test(
         emojiDraft.trim(),
       ) &&
       [
@@ -831,7 +831,7 @@ export default function App() {
             >
               {managing ? "← 返回账号" : "编辑习惯"}
             </button>
-            {managing && (
+            {managing && !form && (
               <div className="manage-panel">
                 <h3>管理习惯</h3>
                 <p className="muted">
