@@ -31,6 +31,9 @@ export function NumericHabits() {
   const [entry, setEntry] = useState<Record<string, string>>({});
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [events, setEvents] = useState<EventRecord[]>([]);
+  const [detailDate, setDetailDate] = useState(businessDate());
+  const [editId, setEditId] = useState<string | null>(null);
+  const [editValue, setEditValue] = useState("");
   const today = businessDate();
   const refresh = useCallback(async () => {
     try {
@@ -51,10 +54,10 @@ export function NumericHabits() {
     catch (e) { const failure = message(e); await refresh().catch(() => {}); setError(failure); }
     finally { setBusy(false); }
   }
-  async function loadEvents(id: string) {
+  async function loadEvents(id: string, date = detailDate) {
     setSelectedId(id);
     try {
-      const data = await rpc("read_events_v3", {p_habit_id:id,p_date:today,p_limit:100}) as EventRecord[];
+      const data = await rpc("read_events_v3", {p_habit_id:id,p_date:date,p_limit:100}) as EventRecord[];
       setEvents(data.filter(e => e.event_kind === "occurrence" && e.action !== "void"));
     } catch(e) { setError(message(e)); }
   }
@@ -81,9 +84,12 @@ export function NumericHabits() {
           <label>新增记录（{unit}）<input type="number" inputMode="numeric" min="1" max={m==="duration"?1440:1000000} value={entry[h.id]??""} onChange={e=>setEntry(v=>({...v,[h.id]:e.target.value}))}/></label>
           <button disabled={busy || !normalValue(entry[h.id]??"",m)}>记录一次</button>
         </form>
-        <button type="button" className="secondary" disabled={busy} onClick={()=>void loadEvents(h.id)}>查看今天的记录</button>
-        {selectedId===h.id && <ul className="numeric-events">{events.length===0 && <li>今天暂无记录</li>}{events.map(e=><li key={e.event_id}><time>{new Date(e.occurred_at).toLocaleTimeString("zh-CN",{hour:"2-digit",minute:"2-digit"})}</time> · {e.input_value} {unit}
-          <button type="button" className="secondary" disabled={busy} onClick={()=>{if(!window.confirm("确认撤销这条记录？"))return;void submit(async()=>{await rpc("record_progress_v3",{p_operation_id:crypto.randomUUID(),p_event_id:e.event_id,p_habit_id:h.id,p_date:today,p_action:"void",p_value:e.input_value,p_occurred_at:e.occurred_at,p_expected_revision:e.revision,p_kind:"occurrence"});await loadEvents(h.id);});}}>撤销</button></li>)}</ul>}
+        <label>查看记录日期<input type="date" min="2020-01-01" max={today} value={detailDate} onChange={e=>{setDetailDate(e.target.value);setEditId(null);}} /></label>
+        <button type="button" className="secondary" disabled={busy} onClick={()=>void loadEvents(h.id)}>查看指定日期记录</button>
+        {selectedId===h.id && <ul className="numeric-events">{events.length===0 && <li>所选日期暂无记录</li>}{events.map(e=><li key={e.event_id}><time>{new Date(e.occurred_at).toLocaleTimeString("zh-CN",{hour:"2-digit",minute:"2-digit"})}</time> · {e.input_value} {unit}
+          {detailDate===today && <button type="button" className="secondary" disabled={busy} onClick={()=>{setEditId(e.event_id);setEditValue(String(e.input_value));}}>修改数值</button>}
+          {editId===e.event_id && <form onSubmit={ev=>{ev.preventDefault();const value=normalValue(editValue,m);if(!value)return;void submit(async()=>{await rpc("record_progress_v3",{p_operation_id:crypto.randomUUID(),p_event_id:e.event_id,p_habit_id:h.id,p_date:detailDate,p_action:"revise",p_value:value,p_occurred_at:e.occurred_at,p_expected_revision:e.revision,p_kind:"occurrence"});setEditId(null);await loadEvents(h.id);});}}><input type="number" aria-label="修改记录数值" value={editValue} onChange={ev=>setEditValue(ev.target.value)} min="1" max={m==="duration"?1440:1000000}/><button disabled={busy||!normalValue(editValue,m)}>保存数值</button><button type="button" className="secondary" onClick={()=>setEditId(null)}>取消</button></form>}
+          <button type="button" className="secondary" disabled={busy} onClick={()=>{if(!window.confirm("确认撤销这条记录？"))return;void submit(async()=>{await rpc("record_progress_v3",{p_operation_id:crypto.randomUUID(),p_event_id:e.event_id,p_habit_id:h.id,p_date:detailDate,p_action:"void",p_value:e.input_value,p_occurred_at:e.occurred_at,p_expected_revision:e.revision,p_kind:"occurrence"});await loadEvents(h.id);});}}>撤销</button></li>)}</ul>}
       </article>})}
     </>}
   </section>;
