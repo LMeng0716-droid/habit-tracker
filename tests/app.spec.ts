@@ -326,7 +326,7 @@ test("create, edit, historical checkin and archive preserves today's completion"
   await page.getByRole("button", { name: "编辑习惯" }).click();
   await page.getByRole("button", { name: /运动.*›/ }).click();
   await page.getByLabel("名称", { exact: true }).fill("运动十分钟");
-  await page.getByRole("button", { name: "保存习惯" }).click();
+  await page.getByRole("button", { name: "保存修改" }).click();
   await page.getByRole("button", { name: "今天", exact: true }).click();
   const updated = page.locator("article").filter({
     has: page.getByRole("heading", { name: "运动十分钟", exact: true }),
