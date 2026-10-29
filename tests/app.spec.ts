@@ -327,6 +327,7 @@ test("create, edit, historical checkin and archive preserves today's completion"
   await page.getByRole("button", { name: /运动.*›/ }).click();
   await page.getByLabel("名称", { exact: true }).fill("运动十分钟");
   await page.getByRole("button", { name: "保存习惯" }).click();
+  await page.getByRole("button", { name: "今天", exact: true }).click();
   const updated = page.locator("article").filter({
     has: page.getByRole("heading", { name: "运动十分钟", exact: true }),
   });
@@ -770,7 +771,7 @@ test("optimistic checkins are per-habit, deduplicate rapid taps and survive stal
   await expect(
     reading.getByRole("button", { name: "取消打卡" }),
   ).toHaveAttribute("aria-pressed", "true");
-  await expect(reading).toContainText("正在保存");
+  await expect(reading).toContainText("同步中");
   await expect(reading).not.toHaveClass(/celebrate-confirmed/);
   await expect(page.getByText(/已保存到云端/)).toHaveCount(0);
   expect(api.writes()).toBe(1);
