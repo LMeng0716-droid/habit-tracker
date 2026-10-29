@@ -444,25 +444,8 @@ export default function App() {
       [habitId]: { sequence, habitId, date, completed, status: "saving" },
     });
     clearCelebration(habitId, !completed);
-    // Visual feedback happens at tap time; network persistence remains pending.
-    if (completed) {
-      const predicted = applyCheckin(startedSnapshot, habitId, date, true);
-      const celebration = celebrationFor(
-        startedSnapshot,
-        predicted,
-        habitId,
-        date,
-        true,
-        businessDate(),
-      );
-      if (celebration.ordinary)
-        playCelebration({
-          sequence,
-          habitId,
-          name: predicted.habits.find((h) => h.id === habitId)?.name ?? "习惯",
-          all: celebration.all,
-        });
-    }
+    // React's optimistic overlay updates the button immediately; keep
+    // confetti strictly tied to confirmed persistence.
     setNotice("");
     setError("");
     const current = () =>
@@ -486,6 +469,32 @@ export default function App() {
       setNotice(
         completed ? "完成啦 ✨ 已保存到云端。" : "已取消打卡并保存到云端。",
       );
+      const celebration = celebrationFor(
+        startedSnapshot,
+        after,
+        habitId,
+        date,
+        completed,
+        businessDate(),
+      );
+      if (celebration.ordinary) {
+        const card = document.querySelector(
+          `[data-habit-id="${CSS.escape(habitId)}"]`,
+        );
+        const dock =
+          card && card.getBoundingClientRect().top > window.innerHeight / 2
+            ? "top"
+            : "bottom";
+        playCelebration({
+          sequence,
+          habitId,
+          name: after.habits.find((h) => h.id === habitId)?.name ?? "习惯",
+          all:
+            celebration.all &&
+            !Object.values(next).some((op) => op.date === after.today),
+          dock,
+        });
+      }
     } catch (e) {
       if (!current()) return;
       clearCelebration(habitId, true);
