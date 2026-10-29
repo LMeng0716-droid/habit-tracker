@@ -1,0 +1,29 @@
+name: Format updated phone tests once
+on:
+  push:
+    branches: [feat/mobile-fast-checkin-manage]
+    paths: [.github/workflows/format-fast-tests-once.yml]
+permissions:
+  contents: write
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm ci
+      - run: npx prettier --write tests/app.spec.ts
+      - name: Commit and remove temporary workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add tests/app.spec.ts
+          git rm .github/workflows/format-fast-tests-once.yml
+          git commit -m "style: format mobile management browser tests"
+          git push origin HEAD:feat/mobile-fast-checkin-manage
