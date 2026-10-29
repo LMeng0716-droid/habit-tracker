@@ -825,3 +825,11 @@ progress {
 .heatmap-checked { background: #258467; }
 .heatmap-empty { background: #d4e9df; }
 .heatmap-ineligible { background: #e3e6e4; }
+
+.numeric-panel { margin:1rem 0; padding:1rem; border-radius:16px; background:rgba(255,255,255,.72); }
+.numeric-panel form { display:grid; gap:.5rem; margin:1rem 0; }
+.numeric-panel input,.numeric-panel select { max-width:100%; min-width:0; }
+.numeric-item { border-top:1px solid rgba(30,70,48,.2); padding:.8rem 0; }
+.numeric-events { padding-left:1.1rem; }
+.numeric-events li { margin:.5rem 0; }
+.numeric-events button { margin-left:.5rem; }
