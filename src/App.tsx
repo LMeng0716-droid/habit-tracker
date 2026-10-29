@@ -1027,10 +1027,18 @@ export default function App() {
                       aria-label={`拖动排序：${h.name}`}
                       title="按住拖动调整顺序"
                       onKeyDown={(event) => {
-                        if (disabled || hasOperations || !["ArrowUp", "ArrowDown"].includes(event.key)) return;
+                        if (
+                          disabled ||
+                          hasOperations ||
+                          !["ArrowUp", "ArrowDown"].includes(event.key)
+                        )
+                          return;
                         event.preventDefault();
-                        const index = active.findIndex(item => item.id === h.id);
-                        const target = active[index + (event.key === "ArrowUp" ? -1 : 1)];
+                        const index = active.findIndex(
+                          (item) => item.id === h.id,
+                        );
+                        const target =
+                          active[index + (event.key === "ArrowUp" ? -1 : 1)];
                         if (target) reorder(h.id, target.id);
                       }}
                       draggable={!disabled && !hasOperations}
