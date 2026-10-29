@@ -773,6 +773,16 @@ export default function App() {
   const today = snapshot?.today ?? businessDate();
   const stats = selected ? statistics(selected, dates, today, month) : null;
   const streak = streaks(dates, selected?.archived_on ?? today);
+  const editingHabit = form && !form.creating ? snapshot?.habits.find(h => h.id === form.id) : undefined;
+  const nameChanged = !!editingHabit && !!form && form.name.trim() !== editingHabit.name;
+  const emojiChanged = !!editingHabit && emojiDraft.trim() !== editingHabit.emoji;
+  const emojiValid = !emojiChanged || (
+    emojiDraft.trim().length > 0 &&
+    emojiDraft.trim().length <= 16 &&
+    !/[\\p{Cc}\\p{Cf}]/u.test(emojiDraft.trim()) &&
+    /[\\p{Extended_Pictographic}\\p{Regional_Indicator}\\u20E3]/u.test(emojiDraft.trim()) &&
+    [...new Intl.Segmenter("en", { granularity: "grapheme" }).segment(emojiDraft.trim())].length === 1
+  );
   const disabled = busy || loading || !fresh;
   const hasOperations = Object.keys(operations).length > 0;
   const done = snapshot
@@ -1135,111 +1145,63 @@ export default function App() {
         {form && (form.creating || (page === "account" && managing)) && (
           <section className="editor" aria-label="习惯编辑">
             <h2>{form.creating ? "创建习惯" : "编辑习惯"}</h2>
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                const submitted = form;
-                void mutate(
-                  submitted.creating ? "create_habit" : "edit_habit",
-                  {
-                    p_id: submitted.id,
-                    p_name: submitted.name.trim(),
-                    p_color: submitted.color,
-                  },
-                ).then((ok) => {
-                  if (ok && account.current) setForm(null);
-                });
-              }}
-            >
+            <form onSubmit={(event) => {
+              event.preventDefault();
+              const submitted = form;
+              const nextName = submitted.name.trim();
+              const nextEmoji = emojiDraft.trim();
+              if (submitted.creating) {
+                void mutate("create_habit", {p_id:submitted.id,p_name:nextName,p_color:submitted.color})
+                  .then(ok => { if(ok && account.current) setForm(null); });
+                return;
+              }
+              if (!emojiValid || !(nameChanged || emojiChanged)) return;
+              void (async () => {
+                if (nameChanged) {
+                  const ok = await mutate("edit_habit",{
+                    p_id:submitted.id,p_name:nextName,p_color:submitted.color
+                  });
+                  if(!ok) return;
+                }
+                if (emojiChanged) {
+                  const ok = await mutate("set_habit_emoji",{p_id:submitted.id,p_emoji:nextEmoji});
+                  if(!ok) return;
+                }
+                if(account.current) setForm(null);
+              })();
+            }}>
               <label>
                 名称
-                <input
-                  autoFocus
-                  required
-                  maxLength={30}
-                  value={form.name}
-                  disabled={busy}
-                  onChange={(e) => setForm({ ...form, name: e.target.value })}
-                />
+                <input autoFocus required maxLength={30}
+                  value={form.name} disabled={disabled || hasOperations}
+                  onChange={(event) => setForm({...form,name:event.target.value})}/>
               </label>
-              <label>
-                颜色
-                <select
-                  value={form.color}
-                  disabled={busy}
-                  onChange={(e) =>
-                    setForm({ ...form, color: Number(e.target.value) })
-                  }
-                >
-                  {COLORS.map((c, i) => (
-                    <option key={c} value={i}>
-                      {c}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              {!form.creating && managing && (
+              {!form.creating && (
                 <label>
                   Emoji（使用手机键盘输入）
-                  <input
-                    aria-label="自定义习惯 Emoji"
-                    inputMode="text"
-                    maxLength={16}
-                    value={emojiDraft}
-                    onChange={(e) => setEmojiDraft(e.target.value)}
-                    placeholder="例如 🌞 🏊 🥛"
-                  />
-                  <small>仅支持单个 Emoji，云端保存前会检查格式。</small>
-                  <button
-                    type="button"
-                    className="secondary"
-                    disabled={disabled || hasOperations || !emojiDraft.trim()}
-                    onClick={() =>
-                      void mutate("set_habit_emoji", {
-                        p_id: form.id,
-                        p_emoji: emojiDraft.trim(),
-                      })
-                    }
-                  >
-                    保存图标
-                  </button>
+                  <input aria-label="自定义习惯 Emoji" inputMode="text" maxLength={16}
+                    value={emojiDraft} disabled={disabled || hasOperations}
+                    onChange={(event) => setEmojiDraft(event.target.value)}
+                    placeholder="例如 💩 🥗 ☀️" />
+                  <small>从键盘输入一个 Emoji，和名称一起保存。</small>
+                  {!emojiValid && <p role="alert">请输入一个有效的 Emoji。</p>}
                 </label>
               )}
-              {!form.creating && managing && (
-                <button
-                  type="button"
-                  className="secondary"
-                  disabled={disabled || hasOperations}
-                  onClick={() => {
-                    if (
-                      window.confirm(
-                        `归档「${form.name}」？可以在管理习惯中恢复。`,
-                      )
-                    )
-                      void mutate("archive_habit", { p_id: form.id }).then(
-                        (ok) => {
-                          if (ok) setForm(null);
-                        },
-                      );
-                  }}
-                >
-                  归档这个习惯
+              <div className="row editor-actions">
+                <button type="submit"
+                  disabled={disabled || hasOperations || !form.name.trim() ||
+                    (!form.creating && (!(nameChanged || emojiChanged) || !emojiValid))}>
+                  {form.creating ? "创建习惯" : "保存修改"}
                 </button>
-              )}
-              <div className="row">
-                <button
-                  disabled={disabled || hasOperations || !form.name.trim()}
-                >
-                  保存习惯
-                </button>
-                <button
-                  type="button"
-                  className="secondary"
-                  disabled={busy}
-                  onClick={() => setForm(null)}
-                >
-                  取消
-                </button>
+                {!form.creating && (
+                  <button type="button" className="secondary" disabled={disabled || hasOperations}
+                    onClick={() => {
+                      if(window.confirm(`归档「${editingHabit?.name ?? form.name}」？历史打卡将保留，可在账号管理中恢复。`))
+                        void mutate("archive_habit",{p_id:form.id}).then(ok => {if(ok)setForm(null);});
+                    }}>归档</button>
+                )}
+                <button type="button" className="secondary" disabled={busy}
+                  onClick={() => setForm(null)}>取消</button>
               </div>
             </form>
           </section>
