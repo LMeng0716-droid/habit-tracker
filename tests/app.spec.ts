@@ -191,7 +191,9 @@ async function backend(page: Page, snapshot = fixture()) {
         habit.color = Number(args.p_color);
       }
       if (rpc === "set_habit_emoji") {
-        snapshot.habits.find((h) => h.id === args.p_id)!.emoji = String(args.p_emoji);
+        snapshot.habits.find((h) => h.id === args.p_id)!.emoji = String(
+          args.p_emoji,
+        );
       }
       if (rpc === "reorder_habits") {
         (args.p_ids as string[]).forEach((id, index) => {
@@ -1166,7 +1168,9 @@ test("manage habits from account and keep the daily cards minimal", async ({
   await page.getByLabel("自定义习惯 Emoji").fill("☀️");
 });
 
-test("Today drag handle moves habits; Account editor has two fields and one save action", async ({ page }) => {
+test("Today drag handle moves habits; Account editor has two fields and one save action", async ({
+  page,
+}) => {
   const api = await backend(page, twoHabits());
   await page.goto("./");
   await login(page);
@@ -1174,7 +1178,9 @@ test("Today drag handle moves habits; Account editor has two fields and one save
   await expect(drag).toBeVisible();
   await drag.focus();
   await drag.press("ArrowDown");
-  await expect.poll(() => api.snapshot.habits.find(h => h.id === "reading")?.sort_order).toBe(2048);
+  await expect
+    .poll(() => api.snapshot.habits.find((h) => h.id === "reading")?.sort_order)
+    .toBe(2048);
   await page.getByRole("button", { name: "账号", exact: true }).click();
   await page.getByRole("button", { name: "编辑习惯" }).click();
   await expect(page.locator(".manage-drag")).toHaveCount(0);
@@ -1187,8 +1193,12 @@ test("Today drag handle moves habits; Account editor has two fields and one save
   await page.getByLabel("名称", { exact: true }).fill("阅读学习");
   await page.getByLabel("自定义习惯 Emoji").fill("🦄");
   await editor.getByRole("button", { name: "保存修改" }).click();
-  await expect.poll(() => api.snapshot.habits.find(h => h.id === "reading")?.name).toBe("阅读学习");
-  await expect.poll(() => api.snapshot.habits.find(h => h.id === "reading")?.emoji).toBe("🦄");
+  await expect
+    .poll(() => api.snapshot.habits.find((h) => h.id === "reading")?.name)
+    .toBe("阅读学习");
+  await expect
+    .poll(() => api.snapshot.habits.find((h) => h.id === "reading")?.emoji)
+    .toBe("🦄");
 });
 
 test("reload recovery waits for confirmed asynchronous login, not the submit click", async ({
