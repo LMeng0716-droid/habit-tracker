@@ -1026,6 +1026,13 @@ export default function App() {
                       tabIndex={0}
                       aria-label={`拖动排序：${h.name}`}
                       title="按住拖动调整顺序"
+                      onKeyDown={(event) => {
+                        if (disabled || hasOperations || !["ArrowUp", "ArrowDown"].includes(event.key)) return;
+                        event.preventDefault();
+                        const index = active.findIndex(item => item.id === h.id);
+                        const target = active[index + (event.key === "ArrowUp" ? -1 : 1)];
+                        if (target) reorder(h.id, target.id);
+                      }
                       draggable={!disabled && !hasOperations}
                       onDragStart={(event) => {
                         draggingHabit.current = h.id;
@@ -1292,7 +1299,7 @@ export default function App() {
                       ))
                   }
                 >
-                  {form.creating ? "创建习惯" : "保存修改"}
+                  {form.creating ? "保存习惯" : "保存修改"}
                 </button>
                 {!form.creating && (
                   <button
