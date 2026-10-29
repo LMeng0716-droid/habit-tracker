@@ -1139,7 +1139,9 @@ test("refresh seeing committed data before write acknowledgements cannot swallow
   expect(api.writes()).toBe(2);
 });
 
-test("manage habits from account and keep the daily cards minimal", async ({ page }) => {
+test("manage habits from account and keep the daily cards minimal", async ({
+  page,
+}) => {
   await backend(page);
   await page.goto("./");
   await login(page);
