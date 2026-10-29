@@ -1,3 +1,4 @@
+import { NumericHabits } from "./NumericHabits";
 import { earnedStreakBadges, heatmapDays, periodProgress, weekStart } from "./insights";
 import { CelebrationFeedback, StarParticles } from "./CelebrationFeedback";
 import { useCelebrations } from "./useCelebrations";
@@ -959,6 +960,7 @@ export default function App() {
             >
               创建习惯
             </button>
+            {(import.meta.env.DEV || import.meta.env.BASE_URL === PREVIEW_BASE) && <NumericHabits />}
             <div className="habits">
               {active.map((h) => {
                 const habitDates = completedDates(snapshot, h.id);
