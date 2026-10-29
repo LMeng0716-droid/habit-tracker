@@ -1032,7 +1032,7 @@ export default function App() {
                         const index = active.findIndex(item => item.id === h.id);
                         const target = active[index + (event.key === "ArrowUp" ? -1 : 1)];
                         if (target) reorder(h.id, target.id);
-                      }
+                      }}
                       draggable={!disabled && !hasOperations}
                       onDragStart={(event) => {
                         draggingHabit.current = h.id;
