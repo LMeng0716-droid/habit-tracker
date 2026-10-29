@@ -1288,7 +1288,7 @@ export default function App() {
                       (!(nameChanged || emojiChanged) || !emojiValid))
                   }
                 >
-                  {form.creating ? "创建习惯" : "保存修改"}
+                  {form.creating ? "保存习惯" : "保存修改"}
                 </button>
                 {!form.creating && (
                   <button
