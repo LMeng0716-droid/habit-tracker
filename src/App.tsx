@@ -447,10 +447,18 @@ export default function App() {
     // Visual feedback happens at tap time; network persistence remains pending.
     if (completed) {
       const predicted = applyCheckin(startedSnapshot, habitId, date, true);
-      const celebration = celebrationFor(startedSnapshot, predicted, habitId, date, true, businessDate());
+      const celebration = celebrationFor(
+        startedSnapshot,
+        predicted,
+        habitId,
+        date,
+        true,
+        businessDate(),
+      );
       if (celebration.ordinary)
         playCelebration({
-          sequence, habitId,
+          sequence,
+          habitId,
           name: predicted.habits.find((h) => h.id === habitId)?.name ?? "习惯",
           all: celebration.all,
         });
@@ -478,7 +486,6 @@ export default function App() {
       setNotice(
         completed ? "完成啦 ✨ 已保存到云端。" : "已取消打卡并保存到云端。",
       );
-
     } catch (e) {
       if (!current()) return;
       clearCelebration(habitId, true);
@@ -785,40 +792,120 @@ export default function App() {
         {page === "account" ? (
           <section>
             <h2>账号</h2>
-            <button className="manage-entry" onClick={() => { setManaging((v) => !v); setForm(null); }}>
+            <button
+              className="manage-entry"
+              onClick={() => {
+                setManaging((v) => !v);
+                setForm(null);
+              }}
+            >
               {managing ? "← 返回账号" : "管理习惯 · 编辑与排序"}
             </button>
             {managing && (
               <div className="manage-panel">
                 <h3>管理习惯</h3>
-                <p className="muted">点击习惯进行编辑；按住左侧拖动手柄直接调整顺序。</p>
+                <p className="muted">
+                  点击习惯进行编辑；按住左侧拖动手柄直接调整顺序。
+                </p>
                 <div className="manage-list">
                   {active.map((h) => (
-                    <div className={`manage-item ${draggingId === h.id ? "is-dragging" : ""}`} key={h.id} data-manage-id={h.id}
+                    <div
+                      className={`manage-item ${draggingId === h.id ? "is-dragging" : ""}`}
+                      key={h.id}
+                      data-manage-id={h.id}
                       onDragOver={(e) => e.preventDefault()}
-                      onDrop={(e) => { e.preventDefault(); if (draggingHabit.current) reorder(draggingHabit.current, h.id); draggingHabit.current = null; setDraggingId(null); }}>
-                      <span className="manage-drag" role="button" tabIndex={0} draggable={!disabled && !hasOperations}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        if (draggingHabit.current)
+                          reorder(draggingHabit.current, h.id);
+                        draggingHabit.current = null;
+                        setDraggingId(null);
+                      }}
+                    >
+                      <span
+                        className="manage-drag"
+                        role="button"
+                        tabIndex={0}
+                        draggable={!disabled && !hasOperations}
                         aria-label={`拖动${h.name}排序`}
-                        onDragStart={() => { draggingHabit.current = h.id; setDraggingId(h.id); }}
-                        onDragEnd={() => { draggingHabit.current = null; setDraggingId(null); }}
-                        onPointerDown={(event) => { if (event.pointerType === "touch") { touchHabit.current = h.id; setDraggingId(h.id); } }}
-                        onPointerUp={(event) => { if (touchHabit.current) { const target = document.elementFromPoint(event.clientX,event.clientY)?.closest("[data-manage-id]"); if (target instanceof HTMLElement) reorder(touchHabit.current,target.dataset.manageId ?? ""); touchHabit.current = null; setDraggingId(null); } }}
-                        onPointerCancel={() => { touchHabit.current = null; setDraggingId(null); }}>
+                        onDragStart={() => {
+                          draggingHabit.current = h.id;
+                          setDraggingId(h.id);
+                        }}
+                        onDragEnd={() => {
+                          draggingHabit.current = null;
+                          setDraggingId(null);
+                        }}
+                        onPointerDown={(event) => {
+                          if (event.pointerType === "touch") {
+                            touchHabit.current = h.id;
+                            setDraggingId(h.id);
+                          }
+                        }}
+                        onPointerUp={(event) => {
+                          if (touchHabit.current) {
+                            const target = document
+                              .elementFromPoint(event.clientX, event.clientY)
+                              ?.closest("[data-manage-id]");
+                            if (target instanceof HTMLElement)
+                              reorder(
+                                touchHabit.current,
+                                target.dataset.manageId ?? "",
+                              );
+                            touchHabit.current = null;
+                            setDraggingId(null);
+                          }
+                        }}
+                        onPointerCancel={() => {
+                          touchHabit.current = null;
+                          setDraggingId(null);
+                        }}
+                      >
                         ☰
                       </span>
-                      <button className="manage-pick" onClick={() => { setEmojiDraft(h.emoji); setForm({ id:h.id, name:h.name, color:h.color, creating:false }); }}>
+                      <button
+                        className="manage-pick"
+                        onClick={() => {
+                          setEmojiDraft(h.emoji);
+                          setForm({
+                            id: h.id,
+                            name: h.name,
+                            color: h.color,
+                            creating: false,
+                          });
+                        }}
+                      >
                         <span>{h.emoji}</span> {h.name} <span>›</span>
                       </button>
                     </div>
                   ))}
                 </div>
                 {snapshot.habits.some((h) => h.archived_on) && (
-                  <details className="manage-archive"><summary>已归档习惯</summary>
-                    {snapshot.habits.filter((h) => h.archived_on).map((h) => <div className="manage-item" key={h.id}>
-                      <span>{h.emoji} {h.name}</span>
-                      <button className="secondary" disabled={disabled || hasOperations}
-                        onClick={() => { if (window.confirm(`恢复「${h.name}」？原记录将保留。`)) void mutate("restore_habit",{p_id:h.id}); }}>恢复</button>
-                    </div>)}
+                  <details className="manage-archive">
+                    <summary>已归档习惯</summary>
+                    {snapshot.habits
+                      .filter((h) => h.archived_on)
+                      .map((h) => (
+                        <div className="manage-item" key={h.id}>
+                          <span>
+                            {h.emoji} {h.name}
+                          </span>
+                          <button
+                            className="secondary"
+                            disabled={disabled || hasOperations}
+                            onClick={() => {
+                              if (
+                                window.confirm(
+                                  `恢复「${h.name}」？原记录将保留。`,
+                                )
+                              )
+                                void mutate("restore_habit", { p_id: h.id });
+                            }}
+                          >
+                            恢复
+                          </button>
+                        </div>
+                      ))}
                   </details>
                 )}
               </div>
@@ -919,7 +1006,9 @@ export default function App() {
                       )}
                       <p>
                         {operations[h.id]?.status === "saving"
-                          ? (operations[h.id]?.completed ? "✓ 已打卡 · 同步中 · " : "正在取消 · 同步中 · ")
+                          ? operations[h.id]?.completed
+                            ? "✓ 已打卡 · 同步中 · "
+                            : "正在取消 · 同步中 · "
                           : operations[h.id]?.status === "uncertain"
                             ? "待核对 · "
                             : checked
@@ -948,7 +1037,6 @@ export default function App() {
                         {checked ? "✓" : "打卡"}
                       </span>
                     </button>
-
                   </article>
                 );
               })}
@@ -1105,19 +1193,48 @@ export default function App() {
               {!form.creating && managing && (
                 <label>
                   Emoji（使用手机键盘输入）
-                  <input aria-label="自定义习惯 Emoji" inputMode="text" maxLength={16}
-                    value={emojiDraft} onChange={(e) => setEmojiDraft(e.target.value)}
-                    placeholder="例如 🌞 🏊 🥛" />
+                  <input
+                    aria-label="自定义习惯 Emoji"
+                    inputMode="text"
+                    maxLength={16}
+                    value={emojiDraft}
+                    onChange={(e) => setEmojiDraft(e.target.value)}
+                    placeholder="例如 🌞 🏊 🥛"
+                  />
                   <small>仅支持单个 Emoji，云端保存前会检查格式。</small>
-                  <button type="button" className="secondary" disabled={disabled || hasOperations || !emojiDraft.trim()}
-                    onClick={() => void mutate("set_habit_emoji",{p_id:form.id,p_emoji:emojiDraft.trim()})}>
+                  <button
+                    type="button"
+                    className="secondary"
+                    disabled={disabled || hasOperations || !emojiDraft.trim()}
+                    onClick={() =>
+                      void mutate("set_habit_emoji", {
+                        p_id: form.id,
+                        p_emoji: emojiDraft.trim(),
+                      })
+                    }
+                  >
                     保存图标
                   </button>
                 </label>
               )}
               {!form.creating && managing && (
-                <button type="button" className="secondary" disabled={disabled || hasOperations}
-                  onClick={() => { if(window.confirm(`归档「${form.name}」？可以在管理习惯中恢复。`)) void mutate("archive_habit",{p_id:form.id}).then(ok=>{if(ok)setForm(null);}); }}>
+                <button
+                  type="button"
+                  className="secondary"
+                  disabled={disabled || hasOperations}
+                  onClick={() => {
+                    if (
+                      window.confirm(
+                        `归档「${form.name}」？可以在管理习惯中恢复。`,
+                      )
+                    )
+                      void mutate("archive_habit", { p_id: form.id }).then(
+                        (ok) => {
+                          if (ok) setForm(null);
+                        },
+                      );
+                  }}
+                >
                   归档这个习惯
                 </button>
               )}
