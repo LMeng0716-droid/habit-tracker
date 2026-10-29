@@ -811,3 +811,17 @@ progress {
     gap: 5px;
   }
 }
+
+
+/* Annual progress: 53 columns x 7 rows, finger-friendly horizontal scroll on phones. */
+.insights { margin-top: 1rem; padding: .8rem; border-radius: 16px; background: rgba(255,255,255,.58); }
+.insights h3 { margin: .6rem 0; }
+.streak-badges { display: flex; gap: .45rem; flex-wrap: wrap; margin: .7rem 0 1rem; }
+.streak-badges span { padding: .4rem .6rem; border-radius: 999px; font-size: .85rem; }
+.badge-earned { background: #f7e6a6; color: #573f13; }
+.badge-locked { background: #e7e8e5; color: #626b65; }
+.year-heatmap { display: grid; grid-auto-flow: column; grid-template-rows: repeat(7, 10px); grid-auto-columns: 10px; gap: 3px; overflow-x: auto; padding: 4px 0 12px; max-width: 100%; }
+.heatmap-cell { width: 10px; height: 10px; border-radius: 2px; }
+.heatmap-checked { background: #258467; }
+.heatmap-empty { background: #d4e9df; }
+.heatmap-ineligible { background: #e3e6e4; }
