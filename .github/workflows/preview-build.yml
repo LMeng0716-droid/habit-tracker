@@ -1,7 +1,7 @@
 name: 手机端独立预览构建（不部署）
 on:
   push:
-    branches: [feat/mobile-cloud-tracker, fix/mobile-restore-archived, fix/mobile-checkin-streak-display, feat/mobile-habit-management-local, feat/mobile-cloud-prefs-proposal, feat/mobile-fast-checkin-manage]
+    branches: [feat/mobile-cloud-tracker, fix/mobile-restore-archived, fix/mobile-checkin-streak-display, feat/mobile-habit-management-local, feat/mobile-cloud-prefs-proposal, feat/mobile-fast-checkin-manage, fix/mobile-today-drag-editor-simple]
 permissions:
   contents: read
 jobs:
