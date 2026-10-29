@@ -627,3 +627,17 @@ progress {
     width: 100%;
   }
 }
+
+/* Focused phone management — daily check-in cards stay compact. */
+.manage-entry { display:block; width:100%; margin:14px 0; text-align:left; border-radius:14px; font-weight:650; }
+.manage-panel { padding:12px; border-radius:18px; background:#eef4ee; margin:14px 0; }
+.manage-panel .muted { color:#65776a; font-size:14px; line-height:1.6; }
+.manage-list { display:grid; gap:9px; margin:12px 0; }
+.manage-item { display:flex; align-items:center; gap:10px; min-height:58px; border:1px solid #d5e4d8; background:white; border-radius:14px; padding:7px; }
+.manage-item.is-dragging { box-shadow:0 0 0 2px #6aa88e; opacity:.7; }
+.manage-drag { display:grid; place-items:center; width:48px; height:48px; flex:0 0 48px; border-radius:12px; background:#e8f2eb; color:#2d6550; font-size:24px; cursor:grab; touch-action:none; user-select:none; -webkit-user-select:none; }
+.manage-pick { background:transparent; color:#203c33; flex:1; text-align:left; display:flex; align-items:center; gap:9px; min-width:0; }
+.manage-pick span:last-child { margin-left:auto; }
+.manage-archive .manage-item { justify-content:space-between; }
+.editor label button { display:block; margin-top:10px; }
+@media (max-width:390px) { .manage-item {gap:4px;} .manage-panel {padding:8px;} }
