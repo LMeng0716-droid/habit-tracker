@@ -5,3 +5,5 @@
 - Saving a check-in shows the intended state immediately; Supabase confirmation remains authoritative, and network failure must reconcile/rollback.
 - Cloud keyboard-emoji acceptance requires separately authorized SQL under `supabase/proposals/202610290001_mobile_custom_keyboard_emoji.sql` before this branch can be deployed.
 - Existing checkins, restoration and history remain unchanged. No database migration has been applied by this branch.
+
+The account screen now uses a single **编辑习惯** entry; selecting a habit opens focused settings. Tap response is optimistic with a visible syncing state; celebration is shown only after cloud confirmation.
