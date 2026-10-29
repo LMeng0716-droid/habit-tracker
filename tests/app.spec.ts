@@ -193,7 +193,7 @@ async function backend(page: Page, snapshot = fixture()) {
         const ids = args.p_ids as unknown as string[];
         for (const [i, id] of ids.entries()) {
           const habit = snapshot.habits.find((h) => h.id === id);
-          if (habit) habit.sort_order = (i+1)*1024;
+          if (habit) habit.sort_order = (i + 1) * 1024;
         }
       }
       if (rpc === "edit_habit") {
@@ -1152,24 +1152,34 @@ test("refresh seeing committed data before write acknowledgements cannot swallow
   expect(api.writes()).toBe(2);
 });
 
-test("Today shows drag handles while Account only edits name and emoji", async ({page}) => {
+test("Today shows drag handles while Account only edits name and emoji", async ({
+  page,
+}) => {
   await backend(page);
   await page.goto("./");
   await login(page);
-  await expect(page.getByRole("button", { name: "按住拖动阅读排序" })).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "按住拖动阅读排序" }),
+  ).toBeVisible();
   await page.getByRole("button", { name: "账号", exact: true }).click();
   await page.getByRole("button", { name: "编辑习惯", exact: true }).click();
   await expect(page.getByRole("heading", { name: "管理习惯" })).toBeVisible();
   await expect(page.locator(".manage-drag")).toHaveCount(0);
   await page.getByRole("button", { name: /阅读.*›/ }).click();
   await expect(page.getByLabel("自定义习惯 Emoji")).toBeVisible();
-  await expect(page.getByText("颜色", {exact:true})).toHaveCount(0);
-  await expect(page.getByRole("button", {name:"保存修改"})).toBeDisabled();
+  await expect(page.getByText("颜色", { exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "保存修改" })).toBeDisabled();
   await page.getByLabel("自定义习惯 Emoji").fill("☀️");
-  await expect(page.getByRole("button", {name:"保存修改"})).toBeEnabled();
-  await expect(page.locator(".editor-actions button")).toHaveText(["保存修改","归档","取消"]);
-  await page.getByRole("button",{name:"取消",exact:true}).click();
-  await expect(page.getByRole("heading",{name:"编辑习惯",exact:true})).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "保存修改" })).toBeEnabled();
+  await expect(page.locator(".editor-actions button")).toHaveText([
+    "保存修改",
+    "归档",
+    "取消",
+  ]);
+  await page.getByRole("button", { name: "取消", exact: true }).click();
+  await expect(
+    page.getByRole("heading", { name: "编辑习惯", exact: true }),
+  ).toHaveCount(0);
 });
 
 test("reload recovery waits for confirmed asynchronous login, not the submit click", async ({
