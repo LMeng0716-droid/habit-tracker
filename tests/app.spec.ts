@@ -333,6 +333,7 @@ test("create, edit, historical checkin and archive preserves today's completion"
   });
   await updated.getByRole("button", { name: "打卡", exact: true }).click();
   await page.getByRole("button", { name: "历史", exact: true }).click();
+  await page.getByLabel("习惯", { exact: true }).selectOption({ label: "运动十分钟" });
   await expect(
     page.getByRole("button", { name: "2026-10-11 已打卡" }),
   ).toBeEnabled();
