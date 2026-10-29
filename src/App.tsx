@@ -26,7 +26,6 @@ import {
 } from "./cloud";
 import {
   businessDate,
-  COLORS,
   completedDates,
   eligible,
   monthDates,
@@ -107,6 +106,7 @@ export default function App() {
   const [managing, setManaging] = useState(false);
   const [emojiDraft, setEmojiDraft] = useState("");
   const [draggingId, setDraggingId] = useState<string | null>(null);
+  const [dropTargetId, setDropTargetId] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState("");
   const [month, setMonth] = useState(businessDate().slice(0, 7));
   const account = useRef<string | null>(null);
@@ -813,80 +813,16 @@ export default function App() {
             {managing && (
               <div className="manage-panel">
                 <h3>管理习惯</h3>
-                <p className="muted">
-                  点击习惯进行编辑；按住左侧拖动手柄直接调整顺序。
-                </p>
+                <p className="muted">选择需要修改的习惯，编辑名称和图标。排序请在「今天」页面长按 ☰ 完成。</p>
                 <div className="manage-list">
                   {active.map((h) => (
-                    <div
-                      className={`manage-item ${draggingId === h.id ? "is-dragging" : ""}`}
-                      key={h.id}
-                      data-manage-id={h.id}
-                      onDragOver={(e) => e.preventDefault()}
-                      onDrop={(e) => {
-                        e.preventDefault();
-                        if (draggingHabit.current)
-                          reorder(draggingHabit.current, h.id);
-                        draggingHabit.current = null;
-                        setDraggingId(null);
-                      }}
-                    >
-                      <span
-                        className="manage-drag"
-                        role="button"
-                        tabIndex={0}
-                        draggable={!disabled && !hasOperations}
-                        aria-label={`拖动${h.name}排序`}
-                        onDragStart={() => {
-                          draggingHabit.current = h.id;
-                          setDraggingId(h.id);
-                        }}
-                        onDragEnd={() => {
-                          draggingHabit.current = null;
-                          setDraggingId(null);
-                        }}
-                        onPointerDown={(event) => {
-                          if (event.pointerType === "touch") {
-                            touchHabit.current = h.id;
-                            setDraggingId(h.id);
-                          }
-                        }}
-                        onPointerUp={(event) => {
-                          if (touchHabit.current) {
-                            const target = document
-                              .elementFromPoint(event.clientX, event.clientY)
-                              ?.closest("[data-manage-id]");
-                            if (target instanceof HTMLElement)
-                              reorder(
-                                touchHabit.current,
-                                target.dataset.manageId ?? "",
-                              );
-                            touchHabit.current = null;
-                            setDraggingId(null);
-                          }
-                        }}
-                        onPointerCancel={() => {
-                          touchHabit.current = null;
-                          setDraggingId(null);
-                        }}
-                      >
-                        ☰
-                      </span>
-                      <button
-                        className="manage-pick"
-                        onClick={() => {
-                          setEmojiDraft(h.emoji);
-                          setForm({
-                            id: h.id,
-                            name: h.name,
-                            color: h.color,
-                            creating: false,
-                          });
-                        }}
-                      >
-                        <span>{h.emoji}</span> {h.name} <span>›</span>
-                      </button>
-                    </div>
+                    <button key={h.id} className="manage-pick manage-item"
+                      onClick={() => {
+                        setEmojiDraft(h.emoji);
+                        setForm({id:h.id,name:h.name,color:h.color,creating:false});
+                      }}>
+                      <span>{h.emoji}</span><span>{h.name}</span><span aria-hidden="true">›</span>
+                    </button>
                   ))}
                 </div>
                 {snapshot.habits.some((h) => h.archived_on) && (
@@ -997,16 +933,54 @@ export default function App() {
                   <article
                     key={h.id}
                     data-habit-id={h.id}
-                    className={`card color-${h.color} ${checked ? "completed" : ""} ${celebrating[h.id] ? "celebrate-confirmed" : ""}`}
+                    className={`card color-${h.color} ${checked ? "completed" : ""} ${celebrating[h.id] ? "celebrate-confirmed" : ""} ${draggingId === h.id ? "dragging" : ""} ${dropTargetId === h.id && draggingId !== h.id ? "drop-target" : ""}`}
                     aria-busy={operations[h.id]?.status === "saving"}
-                    onDragOver={(event) => event.preventDefault()}
+                    onDragOver={(event) => {
+                      event.preventDefault();
+                      if (draggingHabit.current) setDropTargetId(h.id);
+                    }}
                     onDrop={(event) => {
                       event.preventDefault();
-                      if (draggingHabit.current)
-                        reorder(draggingHabit.current, h.id);
+                      if (draggingHabit.current) reorder(draggingHabit.current, h.id);
                       draggingHabit.current = null;
+                      touchHabit.current = null;
+                      setDraggingId(null);
+                      setDropTargetId(null);
                     }}
                   >
+                    <span
+                      className="today-drag-handle" role="button" tabIndex={0}
+                      aria-label={`按住拖动${h.name}排序`}
+                      draggable={!disabled && !hasOperations}
+                      onDragStart={() => { draggingHabit.current = h.id; setDraggingId(h.id); }}
+                      onDragEnd={() => { draggingHabit.current = null; setDraggingId(null); setDropTargetId(null); }}
+                      onPointerDown={(event) => {
+                        if (event.pointerType !== "mouse" && !disabled && !hasOperations) {
+                          touchHabit.current = h.id;
+                          setDraggingId(h.id);
+                          event.currentTarget.setPointerCapture(event.pointerId);
+                        }
+                      }}
+                      onPointerMove={(event) => {
+                        if (!touchHabit.current) return;
+                        const destination = document.elementFromPoint(event.clientX,event.clientY)?.closest("[data-habit-id]");
+                        if (destination instanceof HTMLElement) setDropTargetId(destination.dataset.habitId ?? null);
+                      }}
+                      onPointerUp={(event) => {
+                        if (!touchHabit.current) return;
+                        const target = document.elementFromPoint(event.clientX,event.clientY)?.closest("[data-habit-id]");
+                        if (target instanceof HTMLElement) reorder(touchHabit.current,target.dataset.habitId ?? "");
+                        touchHabit.current = null;
+                        setDraggingId(null);
+                        setDropTargetId(null);
+                      }}
+                      onPointerCancel={() => {touchHabit.current = null;setDraggingId(null);setDropTargetId(null);}}
+                      onKeyDown={(event) => {
+                        const index = active.findIndex((item) => item.id === h.id);
+                        if (event.key === "ArrowUp" && index > 0) { event.preventDefault(); reorder(h.id, active[index-1].id); }
+                        if (event.key === "ArrowDown" && index < active.length-1) { event.preventDefault(); reorder(h.id, active[index+1].id); }
+                      }}
+                    >☰</span>
                     <span className="habit-symbol" aria-hidden="true">
                       {h.emoji}
                     </span>
