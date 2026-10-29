@@ -808,7 +808,7 @@ export default function App() {
                 setForm(null);
               }}
             >
-              {managing ? "← 返回账号" : "管理习惯 · 编辑与排序"}
+              {managing ? "← 返回账号" : "编辑习惯"}
             </button>
             {managing && (
               <div className="manage-panel">
@@ -919,6 +919,8 @@ export default function App() {
                 )}
               </div>
             )}
+            {!managing && (
+              <>
             <p className="email">{session.user.email}</p>
             <p>
               习惯和打卡记录保存在 Supabase。更换手机后登录同一账号即可恢复。
@@ -946,6 +948,8 @@ export default function App() {
             <button disabled={busy} onClick={() => void logout()}>
               退出登录
             </button>
+              </>
+            )}
           </section>
         ) : !snapshot ? (
           <p>尚未读取到数据，请点击刷新重试。</p>
