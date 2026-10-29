@@ -422,7 +422,7 @@ export default function App() {
       }
     }
   }
-  async function saveHabitChanges(submitted: Form, emojiText: string) {
+  async async function saveHabitChanges(submitted: Form, emojiText: string) {
     const before = confirmed.current?.habits.find(h => h.id === submitted.id);
     if (!before || !fresh || !account.current || running.current || Object.keys(operationsRef.current).length || !ensureSession()) return;
     const name = submitted.name.trim();
