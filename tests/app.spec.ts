@@ -335,7 +335,10 @@ test("create, edit, historical checkin and archive preserves today's completion"
     .filter({ has: page.getByRole("heading", { name: "运动", exact: true }) });
   await page.getByRole("button", { name: "账号", exact: true }).click();
   await page.getByRole("button", { name: "编辑习惯" }).click();
-  await page.locator(".manage-list .manage-pick").filter({hasText:"运动"}).click();
+  await page
+    .locator(".manage-list .manage-pick")
+    .filter({ hasText: "运动" })
+    .click();
   await page.getByLabel("名称", { exact: true }).fill("运动十分钟");
   await page.getByRole("button", { name: "保存修改" }).click();
   await page.getByRole("button", { name: "今天", exact: true }).click();
@@ -1165,7 +1168,10 @@ test("Today shows drag handles while Account only edits name and emoji", async (
   await page.getByRole("button", { name: "编辑习惯", exact: true }).click();
   await expect(page.getByRole("heading", { name: "管理习惯" })).toBeVisible();
   await expect(page.locator(".manage-drag")).toHaveCount(0);
-  await page.locator(".manage-list .manage-pick").filter({hasText:"阅读"}).click();
+  await page
+    .locator(".manage-list .manage-pick")
+    .filter({ hasText: "阅读" })
+    .click();
   await expect(page.getByLabel("自定义习惯 Emoji")).toBeVisible();
   await expect(page.getByText("颜色", { exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "保存修改" })).toBeDisabled();
@@ -1190,7 +1196,10 @@ test("one Save Changes persists both changed name and compound keyboard emoji", 
   await login(page);
   await page.getByRole("button", { name: "账号", exact: true }).click();
   await page.getByRole("button", { name: "编辑习惯", exact: true }).click();
-  await page.locator(".manage-list .manage-pick").filter({hasText:"阅读"}).click();
+  await page
+    .locator(".manage-list .manage-pick")
+    .filter({ hasText: "阅读" })
+    .click();
   await page.getByLabel("名称", { exact: true }).fill("早间阅读");
   await page.getByLabel("自定义习惯 Emoji").fill("👩‍⚕️");
   await page.getByRole("button", { name: "保存修改" }).click();
