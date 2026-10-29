@@ -48,7 +48,7 @@ export function NumericHabits() {
   async function submit(task: () => Promise<void>) {
     setBusy(true); setError("");
     try { await task(); await refresh(); }
-    catch (e) { setError(message(e)); await refresh().catch(() => {}); }
+    catch (e) { const failure = message(e); await refresh().catch(() => {}); setError(failure); }
     finally { setBusy(false); }
   }
   async function loadEvents(id: string) {
