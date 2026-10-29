@@ -921,33 +921,34 @@ export default function App() {
             )}
             {!managing && (
               <>
-            <p className="email">{session.user.email}</p>
-            <p>
-              习惯和打卡记录保存在 Supabase。更换手机后登录同一账号即可恢复。
-            </p>
-            <p>每天按北京时间计算。断网时无法保存。</p>
-            <InstallHelp />
-            {(import.meta.env.DEV ||
-              import.meta.env.BASE_URL === PREVIEW_BASE) && (
-              <button
-                className="secondary"
-                disabled={busy || hasOperations}
-                onClick={() =>
-                  playCelebration({
-                    sequence: ++operationSequence.current,
-                    habitId: "preview",
-                    name: "",
-                    all: true,
-                    preview: true,
-                  })
-                }
-              >
-                预览庆祝效果（不会打卡）
-              </button>
-            )}
-            <button disabled={busy} onClick={() => void logout()}>
-              退出登录
-            </button>
+                <p className="email">{session.user.email}</p>
+                <p>
+                  习惯和打卡记录保存在
+                  Supabase。更换手机后登录同一账号即可恢复。
+                </p>
+                <p>每天按北京时间计算。断网时无法保存。</p>
+                <InstallHelp />
+                {(import.meta.env.DEV ||
+                  import.meta.env.BASE_URL === PREVIEW_BASE) && (
+                  <button
+                    className="secondary"
+                    disabled={busy || hasOperations}
+                    onClick={() =>
+                      playCelebration({
+                        sequence: ++operationSequence.current,
+                        habitId: "preview",
+                        name: "",
+                        all: true,
+                        preview: true,
+                      })
+                    }
+                  >
+                    预览庆祝效果（不会打卡）
+                  </button>
+                )}
+                <button disabled={busy} onClick={() => void logout()}>
+                  退出登录
+                </button>
               </>
             )}
           </section>
