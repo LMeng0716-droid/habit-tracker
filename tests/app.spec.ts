@@ -323,7 +323,7 @@ test("create, edit, historical checkin and archive preserves today's completion"
     .locator("article")
     .filter({ has: page.getByRole("heading", { name: "运动", exact: true }) });
   await page.getByRole("button", { name: "账号", exact: true }).click();
-  await page.getByRole("button", { name: "管理习惯 · 编辑与排序" }).click();
+  await page.getByRole("button", { name: "编辑习惯" }).click();
   await page.getByRole("button", { name: /运动.*›/ }).click();
   await page.getByLabel("名称", { exact: true }).fill("运动十分钟");
   await page.getByRole("button", { name: "保存习惯" }).click();
@@ -1147,7 +1147,7 @@ test("manage habits from account and keep the daily cards minimal", async ({
   await login(page);
   await expect(page.getByText("更多操作", { exact: true })).toHaveCount(0);
   await page.getByRole("button", { name: "账号", exact: true }).click();
-  await page.getByRole("button", { name: "管理习惯 · 编辑与排序" }).click();
+  await page.getByRole("button", { name: "编辑习惯" }).click();
   await expect(page.getByRole("heading", { name: "管理习惯" })).toBeVisible();
   await expect(page.getByRole("button", { name: /阅读.*›/ })).toBeVisible();
   await page.getByRole("button", { name: /阅读.*›/ }).click();
