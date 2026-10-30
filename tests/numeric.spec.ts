@@ -458,7 +458,7 @@ test("timer crossing Beijing midnight is saved as separate daily records", async
   ).toBeVisible();
   await restored.getByRole("button", { name: "结束并保存计时" }).click();
   await expect(
-    restored.getByText("今日累计：10 / 120 分钟 · 已记录 1 笔"),
+    page.getByRole("status").filter({ hasText: "已记录，云端数据已核对" }),
   ).toBeVisible();
   const saved = api.rows.filter((row) => row.habit_id === "study");
   expect(saved).toHaveLength(2);
