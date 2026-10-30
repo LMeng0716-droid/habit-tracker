@@ -12,9 +12,12 @@ import {
 import { boundedRequest } from "./request";
 import {
   EMOJI,
+  activeTimerStorageKey,
   eventTime,
   normalValue,
   numericMessage,
+  parseActiveTimer,
+  timerOwnerId,
   type Mode,
   splitDurationSession,
 } from "./numeric";
@@ -96,10 +99,16 @@ export function NumericHabits({ accessToken }: { accessToken: string }) {
   const [editId, setEditId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState("");
   const [pageAfter, setPageAfter] = useState<string | null>(null);
-  const [timer, setTimer] = useState<{ id: string; start: number } | null>(
-    null,
-  );
+  const [timer, setTimer] = useState<{
+    id: string;
+    start: number;
+    ownerId: string;
+  } | null>(null);
+  const [timerReady, setTimerReady] = useState(false);
   const [clock, setClock] = useState(Date.now());
+  const ownerId = timerOwnerId(accessToken);
+  const timerKey = ownerId ? activeTimerStorageKey(ownerId) : null;
+  const activeTimer = timer?.ownerId === ownerId ? timer : null;
   const alive = useRef(true);
   const generation = useRef(0);
   const locked = useRef(false);
@@ -114,10 +123,60 @@ export function NumericHabits({ accessToken }: { accessToken: string }) {
     };
   }, []);
   useEffect(() => {
-    if (!timer) return;
+    setTimerReady(false);
+    if (!timerKey || !ownerId) {
+      setTimer(null);
+      setTimerReady(true);
+      return;
+    }
+    try {
+      const saved = parseActiveTimer(window.localStorage.getItem(timerKey));
+      setTimer(saved ? { ...saved, ownerId } : null);
+      setClock(Date.now());
+    } catch {
+      setTimer(null);
+    } finally {
+      setTimerReady(true);
+    }
+  }, [ownerId, timerKey]);
+  useEffect(() => {
+    if (!timerReady || !timerKey || !ownerId) return;
+    try {
+      if (activeTimer) {
+        window.localStorage.setItem(
+          timerKey,
+          JSON.stringify({ id: activeTimer.id, start: activeTimer.start }),
+        );
+      } else {
+        window.localStorage.removeItem(timerKey);
+      }
+    } catch {
+      if (alive.current)
+        setNotice("本机无法保存计时状态；请保持页面打开直至保存记录。");
+    }
+  }, [activeTimer, ownerId, timerKey, timerReady]);
+  useEffect(() => {
+    if (!activeTimer) return;
     const id = setInterval(() => setClock(Date.now()), 1000);
     return () => clearInterval(id);
-  }, [timer]);
+  }, [activeTimer]);
+  useEffect(() => {
+    const syncClock = () => setClock(Date.now());
+    window.addEventListener("focus", syncClock);
+    document.addEventListener("visibilitychange", syncClock);
+    return () => {
+      window.removeEventListener("focus", syncClock);
+      document.removeEventListener("visibilitychange", syncClock);
+    };
+  }, []);
+  useEffect(() => {
+    if (available !== true || !activeTimer) return;
+    const habit = habits.find((item) => item.id === activeTimer.id);
+    if (!habit || habit.habit_type !== "duration" || habit.archived_on) {
+      setTimer(null);
+      setNotice("上次计时对应的习惯已不存在或已归档，计时状态已清理。");
+    }
+  }, [activeTimer, available, habits]);
   const refresh = useCallback(async () => {
     const data = await rpc<{ habits: Habit[]; progress: Progress[] }>(
       "read_snapshot_v3",
@@ -532,15 +591,15 @@ export function NumericHabits({ accessToken }: { accessToken: string }) {
                 {h.habit_type === "duration" && !h.archived_on && (
                   <div>
                     <p>
-                      计时跨越北京时间午夜时会自动按日期拆分；计时仅保留在当前页面，关闭页面会停止。
+                      计时状态保存在本机，关闭或重新打开页面后可继续；跨越北京时间午夜会自动拆分。
                     </p>
-                    {timer?.id === h.id ? (
+                    {activeTimer?.id === h.id ? (
                       <>
                         <p role="status">
                           已计时{" "}
                           {Math.max(
                             0,
-                            Math.floor((clock - timer.start) / 1000),
+                            Math.floor((clock - activeTimer.start) / 1000),
                           )}{" "}
                           秒
                         </p>
@@ -597,10 +656,10 @@ export function NumericHabits({ accessToken }: { accessToken: string }) {
                       </>
                     ) : (
                       <button
-                        disabled={disabled || timer !== null}
+                        disabled={disabled || activeTimer !== null}
                         onClick={() => {
                           setClock(Date.now());
-                          setTimer({ id: h.id, start: Date.now() });
+                          setTimer(ownerId ? { id: h.id, start: Date.now(), ownerId } : null);
                         }}
                       >
                         开始计时
