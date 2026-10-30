@@ -604,7 +604,9 @@ export function NumericHabits({ accessToken }: { accessToken: string }) {
                           秒
                         </p>
                         <button
-                          disabled={disabled || clock - activeTimer.start < 60000}
+                          disabled={
+                            disabled || clock - activeTimer.start < 60000
+                          }
                           onClick={() => {
                             const segments = splitDurationSession(
                               activeTimer.start,
@@ -659,7 +661,11 @@ export function NumericHabits({ accessToken }: { accessToken: string }) {
                         disabled={disabled || activeTimer !== null}
                         onClick={() => {
                           setClock(Date.now());
-                          setTimer(ownerId ? { id: h.id, start: Date.now(), ownerId } : null);
+                          setTimer(
+                            ownerId
+                              ? { id: h.id, start: Date.now(), ownerId }
+                              : null,
+                          );
                         }}
                       >
                         开始计时

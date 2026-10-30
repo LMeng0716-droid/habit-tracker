@@ -118,11 +118,11 @@ export function timerOwnerId(accessToken: string): string | null {
     const payload = accessToken.split(".")[1];
     if (!payload) return null;
     const normalized = payload.replace(/-/g, "+").replace(/_/g, "/");
-    const decoded = atob(normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "="));
+    const decoded = atob(
+      normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "="),
+    );
     const subject = JSON.parse(decoded)?.sub;
-    return typeof subject === "string" && subject.length > 0
-      ? subject
-      : null;
+    return typeof subject === "string" && subject.length > 0 ? subject : null;
   } catch {
     return null;
   }

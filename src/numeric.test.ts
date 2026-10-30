@@ -41,14 +41,18 @@ describe("numeric input and actionable errors", () => {
       "2026-01-01T12:00:00+08:00",
     ));
   test("active timer persistence is validated and scoped to the authenticated account", () => {
-    const payload = Buffer.from(JSON.stringify({ sub: "user-123" })).toString("base64url");
+    const payload = Buffer.from(JSON.stringify({ sub: "user-123" })).toString(
+      "base64url",
+    );
     const token = `header.${payload}.signature`;
     expect(timerOwnerId(token)).toBe("user-123");
     expect(timerOwnerId("invalid-token")).toBeNull();
     expect(activeTimerStorageKey("user-123")).not.toBe(
       activeTimerStorageKey("user-456"),
     );
-    expect(parseActiveTimer(JSON.stringify({ id: "study", start: 1000 }))).toEqual({
+    expect(
+      parseActiveTimer(JSON.stringify({ id: "study", start: 1000 })),
+    ).toEqual({
       id: "study",
       start: 1000,
     });

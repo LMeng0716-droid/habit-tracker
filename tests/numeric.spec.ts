@@ -455,7 +455,9 @@ test("timer crossing Beijing midnight is saved as separate daily records", async
   ]);
   expect(saved.reduce((total, row) => total + row.input_value, 0)).toBe(20);
 });
-test("active duration timer resumes after a full page reload", async ({ page }) => {
+test("active duration timer resumes after a full page reload", async ({
+  page,
+}) => {
   const api = await setup(page);
   const study = card(page, "📚 学习");
   await study.getByRole("button", { name: "开始计时" }).click();
