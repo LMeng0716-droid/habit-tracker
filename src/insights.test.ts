@@ -46,7 +46,7 @@ describe("insights", () => {
     expect(days[0].eligible).toBe(false);
   });
   it(
-    "builds numeric completion dates, period rates, streaks and annual heatmap inputs",
+    "builds numeric heatmap and streak inputs",
     () => {
       const numericHabit = {
         id: "water",
