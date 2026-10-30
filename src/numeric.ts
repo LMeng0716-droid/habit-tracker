@@ -1,4 +1,5 @@
 import { message } from "./cloud";
+import { businessDate, shiftDate } from "./domain";
 export type Mode = "count" | "duration";
 export const EMOJI = [
   "🌱",
@@ -56,4 +57,53 @@ export function numericMessage(error: unknown): string {
 }
 export function eventTime(date: string, today: string) {
   return date === today ? new Date().toISOString() : `${date}T12:00:00+08:00`;
+}
+
+export type DurationSegment = {
+  date: string;
+  minutes: number;
+  occurredAt: string;
+};
+
+/**
+ * Split a foreground timer into Beijing-calendar-day records.
+ * Whole elapsed minutes are assigned to the day on which each minute ends,
+ * so the sum of all segments is exactly floor(total elapsed seconds / 60).
+ */
+export function splitDurationSession(
+  startMs: number,
+  endMs: number,
+): DurationSegment[] {
+  if (
+    !Number.isFinite(startMs) ||
+    !Number.isFinite(endMs) ||
+    startMs < 0 ||
+    endMs <= startMs
+  ) {
+    return [];
+  }
+  const totalMinutes = Math.floor((endMs - startMs) / 60_000);
+  if (totalMinutes < 1) return [];
+
+  const segments: DurationSegment[] = [];
+  let cursor = startMs;
+  while (cursor < endMs) {
+    const date = businessDate(new Date(cursor));
+    const nextMidnight = Date.parse(`${shiftDate(date, 1)}T00:00:00+08:00`);
+    const segmentEnd = Math.min(endMs, nextMidnight);
+    const minutes =
+      Math.floor((segmentEnd - startMs) / 60_000) -
+      Math.floor((cursor - startMs) / 60_000);
+    if (minutes > 0) {
+      segments.push({
+        date,
+        minutes,
+        occurredAt: new Date(
+          segmentEnd === nextMidnight ? nextMidnight - 1 : segmentEnd,
+        ).toISOString(),
+      });
+    }
+    cursor = segmentEnd;
+  }
+  return segments;
 }
