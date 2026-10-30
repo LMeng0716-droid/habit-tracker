@@ -443,9 +443,16 @@ test("timer crossing Beijing midnight is saved as separate daily records", async
   const study = card(page, "📚 学习");
   await study.getByRole("button", { name: "开始计时" }).click();
   await page.clock.fastForward(1200000);
+  api.lose();
   await study.getByRole("button", { name: "结束并保存计时" }).click();
+  await expect(page.getByRole("alert")).toContainText("已重新读取云端");
+  expect(api.rows.filter((row) => row.habit_id === "study")).toHaveLength(1);
+  await page.reload();
+  const restored = card(page, "📚 学习");
+  await expect(restored.getByRole("button", { name: "结束并保存计时" })).toBeVisible();
+  await restored.getByRole("button", { name: "结束并保存计时" }).click();
   await expect(
-    page.getByRole("status").filter({ hasText: "已记录，云端数据已核对" }),
+    restored.getByText("今日累计：10 / 120 分钟 · 已记录 1 笔"),
   ).toBeVisible();
   const saved = api.rows.filter((row) => row.habit_id === "study");
   expect(saved).toHaveLength(2);
