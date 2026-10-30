@@ -1,5 +1,10 @@
 import { NumericHabits } from "./NumericHabits";
-import { earnedStreakBadges, heatmapDays, periodProgress, weekStart } from "./insights";
+import {
+  earnedStreakBadges,
+  heatmapDays,
+  periodProgress,
+  weekStart,
+} from "./insights";
 import { CelebrationFeedback, StarParticles } from "./CelebrationFeedback";
 import { useCelebrations } from "./useCelebrations";
 import { celebrationFor } from "./celebrations";
@@ -960,7 +965,13 @@ export default function App() {
             >
               创建习惯
             </button>
-            {(import.meta.env.DEV || import.meta.env.BASE_URL === PREVIEW_BASE) && <NumericHabits />}
+            {(import.meta.env.DEV ||
+              import.meta.env.BASE_URL === PREVIEW_BASE) && (
+              <NumericHabits
+                key={session.user.id}
+                accessToken={session.access_token}
+              />
+            )}
             <div className="habits">
               {active.map((h) => {
                 const habitDates = completedDates(snapshot, h.id);
@@ -1149,27 +1160,55 @@ export default function App() {
                 {selected && (
                   <section className="insights" aria-label="习惯进度统计">
                     <h3>进度与成就</h3>
-                    <p>本周 {(() => {
-                      const w = periodProgress(selected, dates, weekStart(today), today, today);
-                      return `${w.completed}/${w.eligible} 天 · ${w.rate === null ? "暂无统计" : w.rate + "%"}`;
-                    })()}</p>
-                    <p>本月 {stats?.completed}/{stats?.total} 天 · 完成率 {stats?.rate === null ? "暂无统计" : `${stats?.rate}%`}</p>
+                    <p>
+                      本周{" "}
+                      {(() => {
+                        const w = periodProgress(
+                          selected,
+                          dates,
+                          weekStart(today),
+                          today,
+                          today,
+                        );
+                        return `${w.completed}/${w.eligible} 天 · ${w.rate === null ? "暂无统计" : w.rate + "%"}`;
+                      })()}
+                    </p>
+                    <p>
+                      本月 {stats?.completed}/{stats?.total} 天 · 完成率{" "}
+                      {stats?.rate === null ? "暂无统计" : `${stats?.rate}%`}
+                    </p>
                     <div className="streak-badges" aria-label="连续打卡成就">
-                      {[7,21,30].map(n => (
-                        <span key={n} className={earnedStreakBadges(streak.longest).includes(n) ? "badge-earned" : "badge-locked"}
-                          aria-label={`${n}天徽章${streak.longest >= n ? "已获得" : "未获得"}`}>
+                      {[7, 21, 30].map((n) => (
+                        <span
+                          key={n}
+                          className={
+                            earnedStreakBadges(streak.longest).includes(n)
+                              ? "badge-earned"
+                              : "badge-locked"
+                          }
+                          aria-label={`${n}天徽章${streak.longest >= n ? "已获得" : "未获得"}`}
+                        >
                           {streak.longest >= n ? "🏅" : "🔒"} {n}天
                         </span>
                       ))}
                     </div>
                     <h3>过去365天</h3>
-                    <div className="year-heatmap" role="img" aria-label={`过去365天共有${heatmapDays(selected,dates,today).filter(x=>x.checked && x.eligible).length}天打卡`}>
-                      {heatmapDays(selected,dates,today).map(d => (
-                        <span key={d.date} className={`heatmap-cell ${!d.eligible ? "heatmap-ineligible" : d.checked ? "heatmap-checked" : "heatmap-empty"}`}
-                          title={`${d.date} ${!d.eligible ? "未开始或不可打卡" : d.checked ? "已打卡" : "未打卡"}`} />
+                    <div
+                      className="year-heatmap"
+                      role="img"
+                      aria-label={`过去365天共有${heatmapDays(selected, dates, today).filter((x) => x.checked && x.eligible).length}天打卡`}
+                    >
+                      {heatmapDays(selected, dates, today).map((d) => (
+                        <span
+                          key={d.date}
+                          className={`heatmap-cell ${!d.eligible ? "heatmap-ineligible" : d.checked ? "heatmap-checked" : "heatmap-empty"}`}
+                          title={`${d.date} ${!d.eligible ? "未开始或不可打卡" : d.checked ? "已打卡" : "未打卡"}`}
+                        />
                       ))}
                     </div>
-                    <p className="muted">深色表示已打卡；浅色表示未打卡；灰色表示创建前或归档后的日期。</p>
+                    <p className="muted">
+                      深色表示已打卡；浅色表示未打卡；灰色表示创建前或归档后的日期。
+                    </p>
                   </section>
                 )}
                 {selected?.archived_on && (

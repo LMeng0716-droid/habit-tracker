@@ -22,7 +22,10 @@ try:
  print('PostgreSQL '+sql('show server_version;').stdout.strip(),flush=True)
  sql((ROOT/'supabase/tests/local-bootstrap.sql').read_text())
  sql('revoke grant option for usage on schema auth from managed_migration_admin; revoke grant option for execute on function auth.uid() from managed_migration_admin;')
+ preflight=(ROOT/'supabase/checks/v3-sandbox-preflight.sql').read_text()
+ assert 'STOP: mobile foundation missing or partial' in sql(preflight).stdout
  apply('supabase/migrations/202610110001_mobile_cloud.sql')
+ assert 'foundation-only upgrade' in sql(preflight).stdout
  # Baseline tests execute before the extension, preserving their original scope.
  result=sql((ROOT/'supabase/tests/mobile_cloud.sql').read_text()); print(result.stdout.splitlines()[-1])
  if MODE=='upgrade':
@@ -47,6 +50,7 @@ try:
  assert sql("select to_regclass('habit_mobile.progress_operations') is null;").stdout.strip() == 't'
  assert sql("select count(*) from information_schema.columns where table_schema='habit_mobile' and table_name='habits' and column_name='emoji';").stdout.strip() == '0'
  apply('supabase/proposals/202610190001_v3_expansion.sql')
+ assert 'STOP: V3 installed or partial' in sql(preflight).stdout
  sql((ROOT/'supabase/checks/v3-review.sql').read_text())
  assert sql((ROOT/'supabase/checks/v3-data-integrity.sql').read_text()).stdout.splitlines()[:3]==old_integrity, 'Read-only integrity hashes must match'
  print('PASS before/after read-only catalog checks and unchanged canonical hashes')

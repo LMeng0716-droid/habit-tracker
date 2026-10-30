@@ -156,6 +156,15 @@ async function backend(page: Page, snapshot = fixture()) {
       }
       return respond(response);
     }
+    if (path === "/rest/v1/rpc/read_snapshot_v3") {
+      return respond(
+        {
+          code: "PGRST202",
+          message: "Could not find the function read_snapshot_v3",
+        },
+        404,
+      );
+    }
     if (path.startsWith("/rest/v1/rpc/")) {
       writes++;
       const args = request.postDataJSON() as Record<
@@ -366,7 +375,11 @@ test("historical dates, denominator and streak", async ({ page }) => {
   await login(page);
   await page.getByRole("button", { name: "历史", exact: true }).click();
   await expect(page.getByText("当前连续 2 天 · 最长连续 2 天")).toBeVisible();
-  await expect(page.getByText("本月 2/11 天 · 完成率 18%")).toBeVisible();
+  await expect(
+    page
+      .getByRole("region", { name: "习惯进度统计" })
+      .getByText("本月 2/11 天 · 完成率 18%"),
+  ).toBeVisible();
   await page.getByRole("button", { name: "2026-10-08 未打卡" }).click();
   await expect(page.getByText("当前连续 3 天 · 最长连续 3 天")).toBeVisible();
   await expect(page.locator(".celebration-layer")).toHaveCount(0);
@@ -846,7 +859,9 @@ test("failed optimistic write rolls back immediately, locks uncertainty and reco
   await expect(
     card.getByRole("button", { name: "打卡", exact: true }),
   ).toBeEnabled();
-  await expect(page.getByRole("status")).toContainText("本次保存未获确认");
+  await expect(
+    page.getByRole("status").filter({ hasText: "本次保存未获确认" }),
+  ).toContainText("本次保存未获确认");
   expect(api.writes()).toBe(1);
   await card.getByRole("button", { name: "打卡", exact: true }).click();
   await expect(card).toContainText("已完成");
@@ -863,7 +878,9 @@ test("commit with a lost response is recovered by readback without resending or 
   api.loseResponse("reading");
   await card.getByRole("button", { name: "打卡", exact: true }).click();
   await expect(card.getByRole("button", { name: "取消打卡" })).toBeEnabled();
-  await expect(page.getByRole("status")).toContainText("本次保存未获确认");
+  await expect(
+    page.getByRole("status").filter({ hasText: "本次保存未获确认" }),
+  ).toContainText("本次保存未获确认");
   expect(api.writes()).toBe(1);
   await expect(card).not.toHaveClass(/celebrate-confirmed/);
   await expect(page.locator(".card-success")).toHaveCount(0);

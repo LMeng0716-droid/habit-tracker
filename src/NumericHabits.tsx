@@ -1,98 +1,653 @@
-import { useCallback, useEffect, useState } from "react";
-import { cloud, message } from "./cloud";
-import { businessDate } from "./domain";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { cloud } from "./cloud";
+import { businessDate, shiftDate } from "./domain";
+import { boundedRequest } from "./request";
+import {
+  EMOJI,
+  eventTime,
+  normalValue,
+  numericMessage,
+  type Mode,
+} from "./numeric";
 
-type Mode = "count" | "duration";
-type NumericHabit = { id: string; name: string; emoji: string; habit_type: string; target: number | null; archived_on: string | null };
-type Progress = { habit_id: string; date: string; actual_value: number; event_count: number };
-type EventRecord = { event_id: string; revision: number; input_value: number; occurred_at: string; action: string; event_kind: string };
-const rpc = async (name: string, args: Record<string, unknown> = {}) => {
+type Habit = {
+  id: string;
+  name: string;
+  emoji: string;
+  habit_type: Mode;
+  target: number | null;
+  goal_direction: string;
+  created_date: string;
+  archived_on: string | null;
+};
+type Progress = {
+  habit_id: string;
+  date: string;
+  actual_value: number;
+  event_count: number;
+};
+type EventRecord = {
+  event_id: string;
+  revision: number;
+  input_value: number;
+  occurred_at: string;
+  action: string;
+  event_kind: string;
+};
+type Summary = {
+  completion_rate: number | null;
+  completed: number;
+  due: number;
+  pending: number;
+};
+async function requestRpc<T>(
+  name: string,
+  args: Record<string, unknown>,
+  accessToken: string,
+): Promise<T> {
   if (!cloud) throw new Error("云端配置不可用");
-  // Supabase's RPC typing is intentionally resolved at runtime while V3 is staged.
-  const { data, error } = await cloud.schema("habit_mobile").rpc(name, args as never);
+  const client = cloud;
+  const { data, error } = await boundedRequest((signal) =>
+    client
+      .schema("habit_mobile")
+      .rpc(name, args as never)
+      .setHeader("Authorization", `Bearer ${accessToken}`)
+      .abortSignal(signal),
+  );
   if (error) throw error;
-  return data;
-};
-const normalValue = (value: string, mode: Mode): number | null => {
-  if (!/^\d+$/.test(value)) return null;
-  const n = Number(value);
-  return Number.isSafeInteger(n) && n >= 1 && n <= (mode === "duration" ? 1440 : 1000000) ? n : null;
-};
-export function NumericHabits() {
-  const [habits, setHabits] = useState<NumericHabit[]>([]);
+  return data as T;
+}
+export function NumericHabits({ accessToken }: { accessToken: string }) {
+  const rpc = useCallback(
+    <T,>(name: string, args: Record<string, unknown> = {}) =>
+      requestRpc<T>(name, args, accessToken),
+    [accessToken],
+  );
+  const [habits, setHabits] = useState<Habit[]>([]);
   const [progress, setProgress] = useState<Progress[]>([]);
   const [available, setAvailable] = useState<boolean | null>(null);
   const [busy, setBusy] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [detailReady, setDetailReady] = useState(false);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const [uncertain, setUncertain] = useState(false);
   const [name, setName] = useState("");
-  const [emoji, setEmoji] = useState("🎯");
+  const [emoji, setEmoji] = useState("🌱");
   const [mode, setMode] = useState<Mode>("count");
   const [target, setTarget] = useState("5");
   const [entry, setEntry] = useState<Record<string, string>>({});
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selection, setSelection] = useState<{
+    id: string;
+    date: string;
+  } | null>(null);
   const [events, setEvents] = useState<EventRecord[]>([]);
-  const [detailDate, setDetailDate] = useState(businessDate());
+  const [summary, setSummary] = useState<Summary | null>(null);
+  const [periods, setPeriods] = useState<Summary[]>([]);
   const [editId, setEditId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState("");
-  const [eventWarning, setEventWarning] = useState("");
+  const [pageAfter, setPageAfter] = useState<string | null>(null);
+  const [timer, setTimer] = useState<{ id: string; start: number } | null>(
+    null,
+  );
+  const [clock, setClock] = useState(Date.now());
+  const alive = useRef(true);
+  const generation = useRef(0);
+  const locked = useRef(false);
+  const selected = useRef(selection);
+  selected.current = selection;
   const today = businessDate();
+  useEffect(() => {
+    alive.current = true;
+    return () => {
+      alive.current = false;
+      generation.current++;
+    };
+  }, []);
+  useEffect(() => {
+    if (!timer) return;
+    const id = setInterval(() => setClock(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [timer]);
   const refresh = useCallback(async () => {
-    try {
-      const data = await rpc("read_snapshot_v3", { p_start: today, p_end: today }) as {habits: NumericHabit[]; progress: Progress[]};
-      setHabits(data.habits.filter(h => h.habit_type === "count" || h.habit_type === "duration").filter(h => !h.archived_on));
-      setProgress(data.progress ?? []);
-      setAvailable(true);
-      setError("");
-    } catch (e) {
-      setAvailable(false);
-      setError("计次／计时功能需要先通过 V3 数据库审核与部署，目前不会修改旧打卡记录。"+ " " + message(e));
+    const data = await rpc<{ habits: Habit[]; progress: Progress[] }>(
+      "read_snapshot_v3",
+      { p_start: today, p_end: today },
+    );
+    if (!alive.current) return;
+    if (!data || !Array.isArray(data.habits) || !Array.isArray(data.progress))
+      throw new Error("invalid_snapshot");
+    setHabits(
+      data.habits.filter(
+        (h) => h.habit_type === "count" || h.habit_type === "duration",
+      ),
+    );
+    setProgress(data.progress ?? []);
+    setAvailable(true);
+  }, [today, rpc]);
+  useEffect(() => {
+    void refresh().catch((e) => {
+      if (alive.current) {
+        setAvailable(false);
+        setError(numericMessage(e));
+      }
+    });
+  }, [refresh]);
+  async function detail(id: string, date: string, append = false) {
+    const version = ++generation.current;
+    setLoading(true);
+    setDetailReady(false);
+    if (!append) {
+      setEvents([]);
+      setPageAfter(null);
+      setSummary(null);
+      setPeriods([]);
+      setEditId(null);
     }
-  }, [today]);
-  useEffect(() => { void refresh(); }, [refresh]);
-  async function submit(task: () => Promise<void>) {
-    setBusy(true); setError("");
-    try { await task(); await refresh(); }
-    catch (e) { const failure = message(e); await refresh().catch(() => {}); setError(failure); }
-    finally { setBusy(false); }
-  }
-  async function loadEvents(id: string, date = detailDate) {
-    setSelectedId(id);
     try {
-      const data = await rpc("read_events_v3", {p_habit_id:id,p_date:date,p_limit:100}) as EventRecord[];
-      setEventWarning(data.length === 100 ? "仅显示前100条记录；更多记录需要分页读取。" : "");
-      setEvents(data.filter(e => e.event_kind === "occurrence" && e.action !== "void"));
-    } catch(e) { setError(message(e)); }
+      const [data, stats, week, month] = await Promise.all([
+        rpc<EventRecord[]>("read_events_v3", {
+          p_habit_id: id,
+          p_date: date,
+          p_limit: 100,
+          ...(append && pageAfter ? { p_after: pageAfter } : {}),
+        }),
+        rpc<Summary>("read_summary_v3", {
+          p_start: date,
+          p_end: date,
+          p_habit_id: id,
+        }),
+        rpc<Summary>("read_summary_v3", {
+          p_start: shiftDate(date, -6),
+          p_end: date,
+          p_habit_id: id,
+        }),
+        rpc<Summary>("read_summary_v3", {
+          p_start: shiftDate(date, -29),
+          p_end: date,
+          p_habit_id: id,
+        }),
+      ]);
+      if (!alive.current || generation.current !== version) return;
+      if (!Array.isArray(data) || !stats || !week || !month)
+        throw new Error("invalid_event_response");
+      setEvents((old) => (append ? [...old, ...data] : data));
+      setPageAfter(data.length === 100 ? data[data.length - 1].event_id : null);
+      setSummary(stats);
+      setPeriods([week, month]);
+      setDetailReady(true);
+    } catch (e) {
+      if (!alive.current || generation.current !== version) return;
+      throw e;
+    } finally {
+      if (alive.current && generation.current === version) setLoading(false);
+    }
   }
-  if (available === false) return <section className="numeric-panel"><h3>计次／计时习惯（预览）</h3><p role="status">{error}</p><button type="button" className="secondary" onClick={() => void refresh()}>重新检测 V3</button></section>;
-  return <section className="numeric-panel" aria-label="计次和计时习惯">
-    <h3>计次／计时习惯 {available === null ? "· 正在检测" : ""}</h3>
-    {error && <p role="alert">{error}</p>}
-    {available && <>
-      <form onSubmit={e => {e.preventDefault();const goal=normalValue(target, mode);if(!name.trim()||!goal)return;
-        void submit(async () => {await rpc("create_habit_v3",{p_id:crypto.randomUUID(),p_name:name.trim(),p_color:0,p_emoji:emoji.trim()||"🎯",p_type:mode,p_target:goal,p_unit:mode==="count"?"repetition":"minute",p_direction:"at_least"});setName("");});}}>
-        <h4>创建新习惯</h4>
-        <label>名称<input value={name} required maxLength={30} onChange={e=>setName(e.target.value)} placeholder="如：喝水、阅读"/></label>
-        <label>图标<input value={emoji} maxLength={16} onChange={e=>setEmoji(e.target.value)}/></label>
-        <label>记录类型<select value={mode} onChange={e=>{const next=e.target.value as Mode;setMode(next);setTarget(next==="count"?"5":"30");}}><option value="count">计次</option><option value="duration">计时（分钟）</option></select></label>
-        <label>每日目标<input inputMode="numeric" type="number" min="1" max={mode==="count"?1000000:1440} value={target} onChange={e=>setTarget(e.target.value)}/></label>
-        <button disabled={busy || !name.trim() || !normalValue(target,mode)}>创建计次／计时习惯</button>
-      </form>
-      {habits.map(h => {const m=h.habit_type as Mode;const p=progress.find(p=>p.habit_id===h.id);const actual=Number(p?.actual_value ?? 0);const unit=m==="duration"?"分钟":"次";
-      return <article className="numeric-item" key={h.id}>
-        <h4>{h.emoji} {h.name}</h4>
-        <p>今日累计：{actual} / {h.target ?? "—"} {unit} · 已记录 {p?.event_count ?? 0} 笔</p>
-        <form onSubmit={e=>{e.preventDefault();const value=normalValue(entry[h.id]??"",m);if(!value)return;
-          void submit(async()=>{await rpc("record_progress_v3",{p_operation_id:crypto.randomUUID(),p_event_id:crypto.randomUUID(),p_habit_id:h.id,p_date:today,p_action:"record",p_value:value,p_occurred_at:new Date().toISOString(),p_expected_revision:0,p_kind:"occurrence"});setEntry(v=>({...v,[h.id]:""}));if(selectedId===h.id)await loadEvents(h.id);});}}>
-          <label>新增记录（{unit}）<input type="number" inputMode="numeric" min="1" max={m==="duration"?1440:1000000} value={entry[h.id]??""} onChange={e=>setEntry(v=>({...v,[h.id]:e.target.value}))}/></label>
-          <button disabled={busy || !normalValue(entry[h.id]??"",m)}>记录一次</button>
-        </form>
-        <label>查看记录日期<input type="date" min="2020-01-01" max={today} value={detailDate} onChange={e=>{setDetailDate(e.target.value);setEditId(null);}} /></label>
-        <button type="button" className="secondary" disabled={busy} onClick={()=>void loadEvents(h.id)}>查看指定日期记录</button>
-        {selectedId===h.id && <>{eventWarning && <p role="status">{eventWarning}</p>}<ul className="numeric-events">{events.length===0 && <li>所选日期暂无记录</li>}{events.map(e=><li key={e.event_id}><time>{new Date(e.occurred_at).toLocaleTimeString("zh-CN",{hour:"2-digit",minute:"2-digit"})}</time> · {e.input_value} {unit}
-          {detailDate===today && <button type="button" className="secondary" disabled={busy} onClick={()=>{setEditId(e.event_id);setEditValue(String(e.input_value));}}>修改数值</button>}
-          {editId===e.event_id && <form onSubmit={ev=>{ev.preventDefault();const value=normalValue(editValue,m);if(!value)return;void submit(async()=>{await rpc("record_progress_v3",{p_operation_id:crypto.randomUUID(),p_event_id:e.event_id,p_habit_id:h.id,p_date:detailDate,p_action:"revise",p_value:value,p_occurred_at:e.occurred_at,p_expected_revision:e.revision,p_kind:"occurrence"});setEditId(null);await loadEvents(h.id);});}}><input type="number" aria-label="修改记录数值" value={editValue} onChange={ev=>setEditValue(ev.target.value)} min="1" max={m==="duration"?1440:1000000}/><button disabled={busy||!normalValue(editValue,m)}>保存数值</button><button type="button" className="secondary" onClick={()=>setEditId(null)}>取消</button></form>}
-          <button type="button" className="secondary" disabled={busy || detailDate !== today} onClick={()=>{if(!window.confirm("确认撤销这条记录？"))return;void submit(async()=>{await rpc("record_progress_v3",{p_operation_id:crypto.randomUUID(),p_event_id:e.event_id,p_habit_id:h.id,p_date:detailDate,p_action:"void",p_value:e.input_value,p_occurred_at:e.occurred_at,p_expected_revision:e.revision,p_kind:"occurrence"});await loadEvents(h.id);});}}>撤销</button></li>)}</ul></>}
-      </article>})}
-    </>}
-  </section>;
+  async function reconcile() {
+    await refresh();
+    const s = selected.current;
+    if (s) await detail(s.id, s.date);
+  }
+  async function submit(task: () => Promise<void>) {
+    if (locked.current) return;
+    locked.current = true;
+    setBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      await task();
+      if (!alive.current) return;
+      await reconcile();
+      if (alive.current) {
+        setUncertain(false);
+        setNotice("已记录，云端数据已核对。");
+      }
+    } catch (e) {
+      if (!alive.current) return;
+      // Any transport failure may have committed. Never automatically resend +1.
+      setUncertain(true);
+      setEditId(null);
+      let checked = false;
+      try {
+        await reconcile();
+        checked = true;
+      } catch {
+        /* keep writes blocked */
+      }
+      if (alive.current)
+        setError(
+          `${numericMessage(e)}${checked ? " 已重新读取云端；请核对记录，确认后再操作。" : " 核对失败，写入已暂停，请联网重新核对。"}`,
+        );
+    } finally {
+      locked.current = false;
+      if (alive.current) setBusy(false);
+    }
+  }
+  function choose(id: string, date: string) {
+    if (locked.current) return;
+    setSelection({ id, date });
+    selected.current = { id, date };
+    setError("");
+    void detail(id, date).catch((e) => {
+      if (alive.current) setError(numericMessage(e));
+    });
+  }
+  async function record(h: Habit, value: number) {
+    const date = today;
+    await submit(async () => {
+      await rpc("record_progress_v3", {
+        p_operation_id: crypto.randomUUID(),
+        p_event_id: crypto.randomUUID(),
+        p_habit_id: h.id,
+        p_date: date,
+        p_action: "record",
+        p_value: value,
+        p_occurred_at: eventTime(date, today),
+        p_expected_revision: 0,
+        p_kind: "occurrence",
+      });
+      if (alive.current) setEntry((v) => ({ ...v, [h.id]: "" }));
+    });
+  }
+  function mutate(
+    h: Habit,
+    e: EventRecord,
+    action: "revise" | "void",
+    value: number,
+  ) {
+    const date = selection!.date;
+    void submit(async () => {
+      await rpc("record_progress_v3", {
+        p_operation_id: crypto.randomUUID(),
+        p_event_id: e.event_id,
+        p_habit_id: h.id,
+        p_date: date,
+        p_action: action,
+        p_value: value,
+        p_occurred_at: e.occurred_at,
+        p_expected_revision: e.revision,
+        p_kind: "occurrence",
+      });
+      if (alive.current) setEditId(null);
+    });
+  }
+  const disabled = busy || uncertain || available !== true;
+  return (
+    <section className="numeric-panel" aria-label="计次和计时习惯">
+      <h3>计次／计时习惯 {available === null ? "· 正在检测" : ""}</h3>
+      {error && <p role={available === false ? "status" : "alert"}>{error}</p>}
+      {notice && <p role="status">{notice}</p>}
+      {(uncertain || available === false) && (
+        <button
+          type="button"
+          disabled={busy || loading}
+          onClick={() => {
+            setBusy(true);
+            void reconcile()
+              .then(() => {
+                if (alive.current) {
+                  setUncertain(false);
+                  setError("");
+                  setNotice("云端数据已重新核对，请确认记录。 ");
+                }
+              })
+              .catch((e) => {
+                if (alive.current) setError(numericMessage(e));
+              })
+              .finally(() => {
+                if (alive.current) setBusy(false);
+              });
+          }}
+        >
+          重新核对云端记录
+        </button>
+      )}
+      {available && (
+        <>
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              const goal = normalValue(target, mode);
+              if (!goal || !name.trim() || disabled) return;
+              const id = crypto.randomUUID();
+              void submit(async () => {
+                await rpc("create_habit_v3", {
+                  p_id: id,
+                  p_name: name.trim(),
+                  p_color: 0,
+                  p_emoji: emoji,
+                  p_type: mode,
+                  p_target: goal,
+                  p_unit: mode === "count" ? "repetition" : "minute",
+                  p_direction: "at_least",
+                });
+                if (alive.current) setName("");
+              });
+            }}
+          >
+            <h4>创建新习惯</h4>
+            <label>
+              名称
+              <input
+                value={name}
+                required
+                maxLength={30}
+                onChange={(e) => setName(e.target.value)}
+              />
+            </label>
+            <label>
+              图标
+              <select value={emoji} onChange={(e) => setEmoji(e.target.value)}>
+                {EMOJI.map((icon) => (
+                  <option key={icon}>{icon}</option>
+                ))}
+              </select>
+            </label>
+            <label>
+              记录类型
+              <select
+                value={mode}
+                onChange={(e) => {
+                  const m = e.target.value as Mode;
+                  setMode(m);
+                  setTarget(m === "count" ? "5" : "30");
+                }}
+              >
+                <option value="count">计次</option>
+                <option value="duration">计时（分钟）</option>
+              </select>
+            </label>
+            <label>
+              每日目标
+              <input
+                type="number"
+                inputMode="numeric"
+                min="1"
+                max={mode === "count" ? 1000000 : 1440}
+                value={target}
+                onChange={(e) => setTarget(e.target.value)}
+              />
+            </label>
+            <button
+              disabled={disabled || !name.trim() || !normalValue(target, mode)}
+            >
+              创建计次／计时习惯
+            </button>
+          </form>
+          {habits.map((h) => {
+            const p = progress.find((p) => p.habit_id === h.id);
+            const unit = h.habit_type === "duration" ? "分钟" : "次";
+            const s = selection?.id === h.id ? selection : null;
+            const visible = events.filter(
+              (e) => e.event_kind === "occurrence" && e.action !== "void",
+            );
+            return (
+              <article className="numeric-item" key={h.id}>
+                <h4>
+                  {h.emoji} {h.name}
+                  {h.archived_on ? "（已归档）" : ""}
+                </h4>
+                <p>
+                  {h.goal_direction === "tracking_only"
+                    ? "仅记录，不设置达标目标"
+                    : h.goal_direction === "at_most"
+                      ? `每日最多 ${h.target} ${unit} · ${Number(p?.actual_value ?? 0) > Number(h.target) ? "已超标" : "今天尚未结束，未超过上限"}`
+                      : `每日至少 ${h.target} ${unit}`}
+                </p>
+                <p>
+                  今日累计：{p?.actual_value ?? 0} / {h.target ?? "—"} {unit} ·
+                  已记录 {p?.event_count ?? 0} 笔
+                </p>
+                {!h.archived_on && (
+                  <form
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      const value = normalValue(
+                        entry[h.id] ?? "",
+                        h.habit_type,
+                      );
+                      if (value && !disabled) void record(h, value);
+                    }}
+                  >
+                    <label>
+                      新增今日记录（{unit}）
+                      <input
+                        type="number"
+                        inputMode="numeric"
+                        min="1"
+                        max={h.habit_type === "duration" ? 1440 : 1000000}
+                        value={entry[h.id] ?? ""}
+                        onChange={(e) =>
+                          setEntry((v) => ({ ...v, [h.id]: e.target.value }))
+                        }
+                      />
+                    </label>
+                    <button
+                      disabled={
+                        disabled ||
+                        !normalValue(entry[h.id] ?? "", h.habit_type)
+                      }
+                    >
+                      记录一次
+                    </button>
+                  </form>
+                )}
+                {h.habit_type === "duration" && !h.archived_on && (
+                  <div>
+                    <p>
+                      计时仅保留在当前页面，关闭页面会停止；不足一分钟不计入，不支持离线自动保存。
+                    </p>
+                    {timer?.id === h.id ? (
+                      <>
+                        <p role="status">
+                          已计时{" "}
+                          {Math.max(
+                            0,
+                            Math.floor((clock - timer.start) / 1000),
+                          )}{" "}
+                          秒
+                        </p>
+                        <button
+                          disabled={disabled || clock - timer.start < 60000}
+                          onClick={() => {
+                            if (businessDate(new Date(timer.start)) !== today) {
+                              setError(
+                                "计时跨越北京时间午夜，请取消计时后分日手动记录分钟数。",
+                              );
+                              return;
+                            }
+                            const minutes = Math.floor(
+                              (clock - timer.start) / 60000,
+                            );
+                            if (!normalValue(String(minutes), "duration")) {
+                              setError("计时超过每日1440分钟上限。");
+                              return;
+                            }
+                            setEntry((v) => ({
+                              ...v,
+                              [h.id]: String(minutes),
+                            }));
+                            void record(h, minutes);
+                            setTimer(null);
+                          }}
+                        >
+                          结束并保存计时
+                        </button>
+                        <button
+                          className="secondary"
+                          onClick={() => setTimer(null)}
+                        >
+                          取消计时
+                        </button>
+                      </>
+                    ) : (
+                      <button
+                        disabled={disabled || timer !== null}
+                        onClick={() => {
+                          setClock(Date.now());
+                          setTimer({ id: h.id, start: Date.now() });
+                        }}
+                      >
+                        开始计时
+                      </button>
+                    )}
+                  </div>
+                )}
+                <label>
+                  查看记录日期
+                  <input
+                    type="date"
+                    min={h.created_date}
+                    max={h.archived_on ?? today}
+                    disabled={busy}
+                    value={s?.date ?? today}
+                    onChange={(e) => {
+                      if (e.target.value) choose(h.id, e.target.value);
+                    }}
+                  />
+                </label>
+                <button
+                  className="secondary"
+                  disabled={busy || loading}
+                  onClick={() => choose(h.id, s?.date ?? today)}
+                >
+                  查看指定日期记录
+                </button>
+                {s && (
+                  <div aria-busy={loading}>
+                    <p>{s.date} · 北京时间</p>
+                    {loading ? (
+                      <p role="status">正在读取所选日期…</p>
+                    ) : !detailReady ? (
+                      <p role="status">所选日期尚未成功读取，请重新查询。</p>
+                    ) : (
+                      <>
+                        {summary && (
+                          <p>
+                            当日完成率：
+                            {summary.completion_rate === null
+                              ? "暂无可判定目标"
+                              : `${summary.completion_rate}%`}{" "}
+                            · 待确认 {summary.pending ?? 0}
+                          </p>
+                        )}
+                        {periods.map((p, i) => (
+                          <p key={i}>
+                            截至所选日期近{i === 0 ? 7 : 30}天：{p.completed}/
+                            {p.due} 项日目标 · 完成率{" "}
+                            {p.completion_rate === null
+                              ? "暂无可判定目标"
+                              : `${p.completion_rate}%`}{" "}
+                            · 待确认 {p.pending ?? 0}
+                          </p>
+                        ))}
+                        <p>
+                          已加载 {visible.length} 笔 · 合计{" "}
+                          {visible.reduce((sum, e) => sum + e.input_value, 0)}{" "}
+                          {unit}
+                          {pageAfter ? "（还有更多）" : ""}
+                        </p>
+                        <ul className="numeric-events">
+                          {!visible.length && <li>所选日期暂无记录</li>}
+                          {visible.map((e) => (
+                            <li key={e.event_id}>
+                              <time>
+                                {new Date(e.occurred_at).toLocaleTimeString(
+                                  "zh-CN",
+                                  {
+                                    timeZone: "Asia/Shanghai",
+                                    hour: "2-digit",
+                                    minute: "2-digit",
+                                  },
+                                )}
+                              </time>{" "}
+                              · {e.input_value} {unit}
+                              <button
+                                className="secondary"
+                                disabled={disabled}
+                                onClick={() => {
+                                  setEditId(e.event_id);
+                                  setEditValue(String(e.input_value));
+                                }}
+                              >
+                                修改数值
+                              </button>
+                              {editId === e.event_id && (
+                                <form
+                                  onSubmit={(ev) => {
+                                    ev.preventDefault();
+                                    const value = normalValue(
+                                      editValue,
+                                      h.habit_type,
+                                    );
+                                    if (value && !disabled)
+                                      mutate(h, e, "revise", value);
+                                  }}
+                                >
+                                  <input
+                                    aria-label="修改记录数值"
+                                    type="number"
+                                    min="1"
+                                    max={
+                                      h.habit_type === "duration"
+                                        ? 1440
+                                        : 1000000
+                                    }
+                                    value={editValue}
+                                    onChange={(ev) =>
+                                      setEditValue(ev.target.value)
+                                    }
+                                  />
+                                  <button
+                                    disabled={
+                                      disabled ||
+                                      !normalValue(editValue, h.habit_type)
+                                    }
+                                  >
+                                    保存数值
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => setEditId(null)}
+                                  >
+                                    取消
+                                  </button>
+                                </form>
+                              )}
+                              <button
+                                className="secondary"
+                                disabled={disabled}
+                                onClick={() => {
+                                  if (window.confirm("确认撤销这条记录？"))
+                                    mutate(h, e, "void", e.input_value);
+                                }}
+                              >
+                                撤销
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                        {pageAfter && (
+                          <button
+                            disabled={busy}
+                            onClick={() =>
+                              void detail(h.id, s.date, true).catch((e) =>
+                                setError(numericMessage(e)),
+                              )
+                            }
+                          >
+                            加载更多记录
+                          </button>
+                        )}
+                      </>
+                    )}
+                  </div>
+                )}
+              </article>
+            );
+          })}
+        </>
+      )}
+    </section>
+  );
 }
