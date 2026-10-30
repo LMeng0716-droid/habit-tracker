@@ -144,7 +144,11 @@ export function NumericHabits({ accessToken }: { accessToken: string }) {
       if (activeTimer) {
         window.localStorage.setItem(
           timerKey,
-          JSON.stringify({ id: activeTimer.id, start: activeTimer.start }),
+          JSON.stringify({
+            id: activeTimer.id,
+            start: activeTimer.start,
+            ...(activeTimer.pending ? { pending: activeTimer.pending } : {}),
+          }),
         );
       } else {
         window.localStorage.removeItem(timerKey);
