@@ -604,10 +604,10 @@ export function NumericHabits({ accessToken }: { accessToken: string }) {
                           秒
                         </p>
                         <button
-                          disabled={disabled || clock - timer.start < 60000}
+                          disabled={disabled || clock - activeTimer.start < 60000}
                           onClick={() => {
                             const segments = splitDurationSession(
-                              timer.start,
+                              activeTimer.start,
                               clock,
                             );
                             if (!segments.length) {
