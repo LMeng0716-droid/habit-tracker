@@ -6,6 +6,7 @@ import {
   numericHeatmapDays,
   numericPeriodProgress,
   numericProgressDates,
+  numericTrend,
   weekStart,
 } from "./insights";
 import { boundedRequest } from "./request";
@@ -405,6 +406,7 @@ export function NumericHabits({ accessToken }: { accessToken: string }) {
               today,
             );
             const heatmap = numericHeatmapDays(h, completed, today);
+            const trend = numericTrend(h.id, habitProgress, today);
             const s = selection?.id === h.id ? selection : null;
             const visible = events.filter(
               (e) => e.event_kind === "occurrence" && e.action !== "void",
@@ -441,6 +443,15 @@ export function NumericHabits({ accessToken }: { accessToken: string }) {
                   </p>
                   <p>
                     当前连续 {streak.current} 天 · 最长连续 {streak.longest} 天
+                  </p>
+                  <p>
+                    近7天趋势：{trend.recentTotal} {unit} · 前7天：
+                    {trend.previousTotal} {unit} ·
+                    {trend.difference > 0
+                      ? `增加 ${trend.difference}`
+                      : trend.difference < 0
+                        ? `减少 ${Math.abs(trend.difference)}`
+                        : "保持不变"}
                   </p>
                   <div className="streak-badges" aria-label="连续记录成就">
                     {[7, 21, 30].map((days) => (
