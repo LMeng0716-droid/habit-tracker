@@ -443,10 +443,10 @@ test("rapid repeated submit makes one record and permission failure never looks 
 test("timer crossing Beijing midnight is saved as separate daily records", async ({
   page,
 }) => {
-  const api = await setup(page, new Date("2026-10-11T15:50:00.000Z"));
+  const api = await setup(page, new Date("2026-10-11T15:58:00.000Z"));
   const study = card(page, "📚 学习");
   await study.getByRole("button", { name: "开始计时" }).click();
-  await page.clock.runFor(1200000);
+  await page.clock.runFor(180000);
   api.lose();
   await study.getByRole("button", { name: "结束并保存计时" }).click();
   await expect(page.getByRole("alert")).toContainText("已重新读取云端");
@@ -466,7 +466,7 @@ test("timer crossing Beijing midnight is saved as separate daily records", async
     "2026-10-11",
     "2026-10-12",
   ]);
-  expect(saved.reduce((total, row) => total + row.input_value, 0)).toBe(20);
+  expect(saved.reduce((total, row) => total + row.input_value, 0)).toBe(3);
 });
 test("active duration timer resumes after a full page reload", async ({
   page,
