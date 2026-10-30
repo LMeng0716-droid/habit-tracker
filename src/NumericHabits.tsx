@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { cloud } from "./cloud";
-import { shiftDate } from "./domain";
+import { businessDate, shiftDate } from "./domain";
 import { boundedRequest } from "./request";
 import {
   EMOJI,
@@ -190,7 +190,7 @@ export function NumericHabits({ accessToken }: { accessToken: string }) {
     if (s) await detail(s.id, s.date);
   }
   async function submit(task: () => Promise<void>): Promise<boolean> {
-    if (locked.current) return;
+    if (locked.current) return false;
     locked.current = true;
     setBusy(true);
     setError("");
