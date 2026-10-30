@@ -199,8 +199,18 @@ language plpgsql security invoker set search_path='' as $$
 declare uid uuid; receipt habit_mobile.progress_operations%rowtype; begin
   uid:=habit_mobile.require_user_v3();
   insert into habit_mobile.progress_operations(operation_id,event_id,event_kind,habit_id,date,action,input_value,occurred_at,expected_revision)
-    values(p_operation_id,p_event_id,p_kind,p_habit_id,p_date,p_action,p_value,p_occurred_at,p_expected_revision) returning * into receipt;
-  if receipt.operation_id is null then select * into receipt from habit_mobile.progress_operations where user_id=uid and operation_id=p_operation_id; end if;
+    values(p_operation_id,p_event_id,p_kind,p_habit_id,p_date,p_action,p_value,p_occurred_at,p_expected_revision)
+    on conflict (user_id,operation_id) do nothing returning * into receipt;
+  if receipt.operation_id is null then
+    select * into receipt from habit_mobile.progress_operations where user_id=uid and operation_id=p_operation_id;
+    if receipt.operation_id is null then raise exception 'operation_receipt_not_found'; end if;
+    if receipt.event_id is distinct from p_event_id or receipt.event_kind is distinct from p_kind or
+       receipt.habit_id is distinct from p_habit_id or receipt.date is distinct from p_date or
+       receipt.action is distinct from p_action or receipt.input_value is distinct from p_value or
+       receipt.occurred_at is distinct from p_occurred_at or receipt.expected_revision is distinct from p_expected_revision then
+      raise exception 'operation_id_reused';
+    end if;
+  end if;
   return to_jsonb(receipt);
 end $$;
 -- One transaction for a timestamp/date correction: void old event + record new UUID.
