@@ -6,6 +6,7 @@ import {
   numericHeatmapDays,
   numericPeriodProgress,
   numericProgressDates,
+  numericTrend,
   weekStart,
 } from "./insights";
 import type { Habit } from "./domain";
@@ -75,6 +76,11 @@ describe("insights", () => {
     ];
     const dates = numericProgressDates(numericHabit, progress);
     expect([...dates].sort()).toEqual(["2026-10-01", "2026-10-03"]);
+    expect(numericTrend("water", progress, "2026-10-03")).toEqual({
+      recentTotal: 14,
+      previousTotal: 0,
+      difference: 14,
+    });
     expect(
       numericPeriodProgress(
         numericHabit,
