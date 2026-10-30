@@ -1,7 +1,7 @@
 name: 手机端独立预览构建（不部署）
 on:
   push:
-    branches: [feat/mobile-cloud-tracker, fix/mobile-restore-archived, fix/mobile-checkin-streak-display, feat/mobile-habit-management-local, feat/mobile-cloud-prefs-proposal, feat/mobile-fast-checkin-manage, fix/mobile-today-drag-editor-simple]
+    branches: [feat/mobile-cloud-tracker, fix/mobile-restore-archived, fix/mobile-checkin-streak-display, feat/mobile-habit-management-local, feat/mobile-cloud-prefs-proposal, feat/mobile-fast-checkin-manage, fix/mobile-today-drag-editor-simple, feat/mobile-insights-heatmap-badges]
 permissions:
   contents: read
 jobs:
@@ -15,6 +15,8 @@ jobs:
           node-version: '24'
           cache: npm
       - run: npm ci
+      - run: npm run type-check
+      - run: npm run format:check
       - run: npm test
       - name: 校验并构建独立预览（真实公开配置）
         run: npm run build:preview
