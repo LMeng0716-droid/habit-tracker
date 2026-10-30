@@ -88,9 +88,10 @@ export function numericPeriodProgress(
 ): PeriodProgress {
   let completed = 0;
   let eligibleDays = 0;
-  const end = habit.archived_on && habit.archived_on < today
-    ? habit.archived_on
-    : today;
+  const end =
+    habit.archived_on && habit.archived_on < today
+      ? habit.archived_on
+      : today;
   for (let date = from; date <= to; date = shiftDate(date, 1)) {
     if (date < habit.created_date || date > end) continue;
     eligibleDays++;
