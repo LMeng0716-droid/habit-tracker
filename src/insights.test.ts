@@ -45,7 +45,9 @@ describe("insights", () => {
     });
     expect(days[0].eligible).toBe(false);
   });
-  it("builds numeric completion dates, period rates, streaks and annual heatmap inputs", () => {
+  it(
+    "builds numeric completion dates, period rates, streaks and annual heatmap inputs",
+    () => {
     const numericHabit = {
       id: "water",
       created_date: "2026-10-01",
@@ -54,9 +56,24 @@ describe("insights", () => {
       goal_direction: "at_least",
     };
     const progress = [
-      { habit_id: "water", date: "2026-10-01", actual_value: 5, event_count: 2 },
-      { habit_id: "water", date: "2026-10-02", actual_value: 3, event_count: 1 },
-      { habit_id: "water", date: "2026-10-03", actual_value: 6, event_count: 2 },
+      {
+        habit_id: "water",
+        date: "2026-10-01",
+        actual_value: 5,
+        event_count: 2,
+      },
+      {
+        habit_id: "water",
+        date: "2026-10-02",
+        actual_value: 3,
+        event_count: 1,
+      },
+      {
+        habit_id: "water",
+        date: "2026-10-03",
+        actual_value: 6,
+        event_count: 2,
+      },
     ];
     const dates = numericProgressDates(numericHabit, progress);
     expect([...dates].sort()).toEqual(["2026-10-01", "2026-10-03"]);
@@ -76,6 +93,6 @@ describe("insights", () => {
       eligible: true,
       checked: true,
     });
-  });
-
+    },
+  );
 });
