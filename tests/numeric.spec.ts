@@ -27,8 +27,11 @@ type Row = {
   habit_id: string;
   date: string;
 };
-async function setup(page: Page) {
-  await page.clock.install({ time: new Date("2026-10-11T03:00:00Z") });
+async function setup(
+  page: Page,
+  initialTime = new Date("2026-10-11T03:00:00Z"),
+) {
+  await page.clock.install({ time: initialTime });
   const habits: Habit[] = [
     {
       id: "water",
@@ -436,9 +439,8 @@ test("rapid repeated submit makes one record and permission failure never looks 
 test("timer crossing Beijing midnight is saved as separate daily records", async ({
   page,
 }) => {
-  const api = await setup(page);
+  const api = await setup(page, new Date("2026-10-11T15:59:00.000Z"));
   const study = card(page, "📚 学习");
-  await page.clock.setSystemTime(new Date("2026-10-11T15:59:00.000Z"));
   await study.getByRole("button", { name: "开始计时" }).click();
   await page.clock.runFor(120000);
   await study.getByRole("button", { name: "结束并保存计时" }).click();
