@@ -108,9 +108,15 @@ export function splitDurationSession(
   return segments;
 }
 
+export type PendingDurationSegment = DurationSegment & {
+  operationId: string;
+  eventId: string;
+};
+
 export type ActiveDurationTimer = {
   id: string;
   start: number;
+  pending?: PendingDurationSegment[];
 };
 
 export function timerOwnerId(accessToken: string): string | null {
@@ -143,7 +149,32 @@ export function parseActiveTimer(
     ) {
       return null;
     }
-    return { id: value.id, start: value.start };
+    let pending: PendingDurationSegment[] | undefined;
+    if (value.pending !== undefined) {
+      if (!Array.isArray(value.pending) || value.pending.length === 0)
+        return null;
+      pending = value.pending.map((segment: unknown) => {
+        if (!segment || typeof segment !== "object") throw new Error("invalid");
+        const item = segment as Record<string, unknown>;
+        if (
+          typeof item.date !== "string" ||
+          !/^\d{4}-\d{2}-\d{2}$/.test(item.date) ||
+          !Number.isInteger(item.minutes) ||
+          Number(item.minutes) < 1 ||
+          Number(item.minutes) > 1440 ||
+          typeof item.occurredAt !== "string" ||
+          !Number.isFinite(Date.parse(item.occurredAt)) ||
+          typeof item.operationId !== "string" ||
+          item.operationId.length === 0 ||
+          typeof item.eventId !== "string" ||
+          item.eventId.length === 0
+        ) {
+          throw new Error("invalid");
+        }
+        return item as unknown as PendingDurationSegment;
+      });
+    }
+    return { id: value.id, start: value.start, ...(pending ? { pending } : {}) };
   } catch {
     return null;
   }
