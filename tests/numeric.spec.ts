@@ -455,3 +455,22 @@ test("timer crossing Beijing midnight is saved as separate daily records", async
   ]);
   expect(saved.reduce((total, row) => total + row.input_value, 0)).toBe(20);
 });
+test("active duration timer resumes after a full page reload", async ({ page }) => {
+  const api = await setup(page);
+  const study = card(page, "📚 学习");
+  await study.getByRole("button", { name: "开始计时" }).click();
+  await page.clock.fastForward(61000);
+  await page.reload();
+  const restored = card(page, "📚 学习");
+  await expect(restored.getByText("已计时 61 秒")).toBeVisible();
+  await page.clock.fastForward(61000);
+  await restored.getByRole("button", { name: "结束并保存计时" }).click();
+  await expect(
+    restored.getByText("今日累计：2 / 120 分钟 · 已记录 1 笔"),
+  ).toBeVisible();
+  expect(
+    api.rows
+      .filter((row) => row.habit_id === "study")
+      .reduce((total, row) => total + row.input_value, 0),
+  ).toBe(2);
+});
