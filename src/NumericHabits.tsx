@@ -18,6 +18,7 @@ import {
   numericMessage,
   parseActiveTimer,
   timerOwnerId,
+  type ActiveDurationTimer,
   type Mode,
   splitDurationSession,
 } from "./numeric";
@@ -99,11 +100,9 @@ export function NumericHabits({ accessToken }: { accessToken: string }) {
   const [editId, setEditId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState("");
   const [pageAfter, setPageAfter] = useState<string | null>(null);
-  const [timer, setTimer] = useState<{
-    id: string;
-    start: number;
-    ownerId: string;
-  } | null>(null);
+  const [timer, setTimer] = useState<
+    (ActiveDurationTimer & { ownerId: string }) | null
+  >(null);
   const [timerReady, setTimerReady] = useState(false);
   const [clock, setClock] = useState(Date.now());
   const ownerId = timerOwnerId(accessToken);
@@ -608,10 +607,15 @@ export function NumericHabits({ accessToken }: { accessToken: string }) {
                             disabled || clock - activeTimer.start < 60000
                           }
                           onClick={() => {
-                            const segments = splitDurationSession(
-                              activeTimer.start,
-                              clock,
-                            );
+                            const segments =
+                              activeTimer.pending ??
+                              splitDurationSession(activeTimer.start, clock).map(
+                                (segment) => ({
+                                  ...segment,
+                                  operationId: crypto.randomUUID(),
+                                  eventId: crypto.randomUUID(),
+                                }),
+                              );
                             if (!segments.length) {
                               setError("计时不足一分钟，不会生成记录。");
                               return;
@@ -628,11 +632,27 @@ export function NumericHabits({ accessToken }: { accessToken: string }) {
                               setError("单日计时超过1440分钟上限，无法保存。");
                               return;
                             }
+                            const pendingTimer = { ...activeTimer, pending: segments };
+                            setTimer(pendingTimer);
+                            try {
+                              if (timerKey)
+                                window.localStorage.setItem(
+                                  timerKey,
+                                  JSON.stringify({
+                                    id: pendingTimer.id,
+                                    start: pendingTimer.start,
+                                    pending: segments,
+                                  }),
+                                );
+                            } catch {
+                              setError("无法在本机保存待提交记录，请检查浏览器存储权限。");
+                              return;
+                            }
                             void submit(async () => {
                               for (const segment of segments) {
                                 await rpc("record_progress_v3", {
-                                  p_operation_id: crypto.randomUUID(),
-                                  p_event_id: crypto.randomUUID(),
+                                  p_operation_id: segment.operationId,
+                                  p_event_id: segment.eventId,
                                   p_habit_id: h.id,
                                   p_date: segment.date,
                                   p_action: "record",
@@ -651,6 +671,7 @@ export function NumericHabits({ accessToken }: { accessToken: string }) {
                         </button>
                         <button
                           className="secondary"
+                          disabled={busy || Boolean(activeTimer.pending)}
                           onClick={() => setTimer(null)}
                         >
                           取消计时
