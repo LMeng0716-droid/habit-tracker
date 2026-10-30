@@ -99,24 +99,28 @@ async function setup(
       return send({ today, habits: [], checkins: [] });
     if (name.startsWith("read_") && failRead)
       return send({ message: "fixture read failure" }, 500);
-    if (name === "read_snapshot_v3")
+    if (name === "read_snapshot_v3") {
+      const snapshotToday = String(args.p_end ?? today);
       return send({
-        today,
+        today: snapshotToday,
         habits,
         checkins: [],
         progress: habits.map((h) => {
           const r = rows.filter(
             (e) =>
-              e.habit_id === h.id && e.date === today && e.action !== "void",
+              e.habit_id === h.id &&
+              e.date === snapshotToday &&
+              e.action !== "void",
           );
           return {
             habit_id: h.id,
-            date: today,
+            date: snapshotToday,
             actual_value: r.reduce((n, e) => n + e.input_value, 0),
             event_count: r.length,
           };
         }),
       });
+    }
     if (name === "read_events_v3") {
       const result = rows
         .filter(
