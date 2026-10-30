@@ -1,5 +1,13 @@
 import { describe, expect, test } from "vitest";
-import { EMOJI, eventTime, normalValue, numericMessage } from "./numeric";
+import {
+  EMOJI,
+  activeTimerStorageKey,
+  eventTime,
+  normalValue,
+  numericMessage,
+  parseActiveTimer,
+  timerOwnerId,
+} from "./numeric";
 describe("numeric input and actionable errors", () => {
   test("integer units and exact bounds", () => {
     for (const input of [
@@ -32,4 +40,26 @@ describe("numeric input and actionable errors", () => {
     expect(eventTime("2026-01-01", "2026-10-30")).toBe(
       "2026-01-01T12:00:00+08:00",
     ));
+  test("active timer persistence is validated and scoped to the authenticated account", () => {
+    const payload = Buffer.from(JSON.stringify({ sub: "user-123" })).toString("base64url");
+    const token = `header.${payload}.signature`;
+    expect(timerOwnerId(token)).toBe("user-123");
+    expect(timerOwnerId("invalid-token")).toBeNull();
+    expect(activeTimerStorageKey("user-123")).not.toBe(
+      activeTimerStorageKey("user-456"),
+    );
+    expect(parseActiveTimer(JSON.stringify({ id: "study", start: 1000 }))).toEqual({
+      id: "study",
+      start: 1000,
+    });
+    for (const invalid of [
+      null,
+      "not-json",
+      JSON.stringify({ id: "", start: 1000 }),
+      JSON.stringify({ id: "study", start: "1000" }),
+      JSON.stringify({ id: "study", start: 0 }),
+    ]) {
+      expect(parseActiveTimer(invalid)).toBeNull();
+    }
+  });
 });
