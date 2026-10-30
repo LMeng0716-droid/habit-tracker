@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { cloud } from "./cloud";
-import { businessDate, shiftDate } from "./domain";
+import { shiftDate } from "./domain";
 import { boundedRequest } from "./request";
 import {
   EMOJI,
@@ -8,6 +8,7 @@ import {
   normalValue,
   numericMessage,
   type Mode,
+  splitDurationSession,
 } from "./numeric";
 
 type Habit = {
@@ -188,7 +189,7 @@ export function NumericHabits({ accessToken }: { accessToken: string }) {
     const s = selected.current;
     if (s) await detail(s.id, s.date);
   }
-  async function submit(task: () => Promise<void>) {
+  async function submit(task: () => Promise<void>): Promise<boolean> {
     if (locked.current) return;
     locked.current = true;
     setBusy(true);
@@ -196,14 +197,15 @@ export function NumericHabits({ accessToken }: { accessToken: string }) {
     setNotice("");
     try {
       await task();
-      if (!alive.current) return;
+      if (!alive.current) return false;
       await reconcile();
       if (alive.current) {
         setUncertain(false);
         setNotice("已记录，云端数据已核对。");
       }
+      return true;
     } catch (e) {
-      if (!alive.current) return;
+      if (!alive.current) return false;
       // Any transport failure may have committed. Never automatically resend +1.
       setUncertain(true);
       setEditId(null);
@@ -218,6 +220,7 @@ export function NumericHabits({ accessToken }: { accessToken: string }) {
         setError(
           `${numericMessage(e)}${checked ? " 已重新读取云端；请核对记录，确认后再操作。" : " 核对失败，写入已暂停，请联网重新核对。"}`,
         );
+      return false;
     } finally {
       locked.current = false;
       if (alive.current) setBusy(false);
@@ -435,7 +438,7 @@ export function NumericHabits({ accessToken }: { accessToken: string }) {
                 {h.habit_type === "duration" && !h.archived_on && (
                   <div>
                     <p>
-                      计时仅保留在当前页面，关闭页面会停止；不足一分钟不计入，不支持离线自动保存。
+                      计时跨越北京时间午夜时会自动按日期拆分；计时仅保留在当前页面，关闭页面会停止。
                     </p>
                     {timer?.id === h.id ? (
                       <>
@@ -450,25 +453,43 @@ export function NumericHabits({ accessToken }: { accessToken: string }) {
                         <button
                           disabled={disabled || clock - timer.start < 60000}
                           onClick={() => {
-                            if (businessDate(new Date(timer.start)) !== today) {
-                              setError(
-                                "计时跨越北京时间午夜，请取消计时后分日手动记录分钟数。",
-                              );
-                              return;
-                            }
-                            const minutes = Math.floor(
-                              (clock - timer.start) / 60000,
+                            const segments = splitDurationSession(
+                              timer.start,
+                              clock,
                             );
-                            if (!normalValue(String(minutes), "duration")) {
-                              setError("计时超过每日1440分钟上限。");
+                            if (!segments.length) {
+                              setError("计时不足一分钟，不会生成记录。");
                               return;
                             }
-                            setEntry((v) => ({
-                              ...v,
-                              [h.id]: String(minutes),
-                            }));
-                            void record(h, minutes);
-                            setTimer(null);
+                            if (
+                              segments.some(
+                                (segment) =>
+                                  !normalValue(
+                                    String(segment.minutes),
+                                    "duration",
+                                  ),
+                              )
+                            ) {
+                              setError("单日计时超过1440分钟上限，无法保存。");
+                              return;
+                            }
+                            void submit(async () => {
+                              for (const segment of segments) {
+                                await rpc("record_progress_v3", {
+                                  p_operation_id: crypto.randomUUID(),
+                                  p_event_id: crypto.randomUUID(),
+                                  p_habit_id: h.id,
+                                  p_date: segment.date,
+                                  p_action: "record",
+                                  p_value: segment.minutes,
+                                  p_occurred_at: segment.occurredAt,
+                                  p_expected_revision: 0,
+                                  p_kind: "occurrence",
+                                });
+                              }
+                            }).then((saved) => {
+                              if (saved && alive.current) setTimer(null);
+                            });
                           }}
                         >
                           结束并保存计时
