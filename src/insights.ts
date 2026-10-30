@@ -115,3 +115,33 @@ export function numericHeatmapDays(
     return { date, eligible, checked: eligible && dates.has(date) };
   });
 }
+
+export type NumericTrend = {
+  recentTotal: number;
+  previousTotal: number;
+  difference: number;
+};
+
+export function numericTrend(
+  habitId: string,
+  progress: NumericProgressDay[],
+  today: string,
+): NumericTrend {
+  const recentStart = shiftDate(today, -6);
+  const previousStart = shiftDate(today, -13);
+  const previousEnd = shiftDate(today, -7);
+  const sum = (from: string, to: string) =>
+    progress
+      .filter(
+        (day) =>
+          day.habit_id === habitId && day.date >= from && day.date <= to,
+      )
+      .reduce((total, day) => total + day.actual_value, 0);
+  const recentTotal = sum(recentStart, today);
+  const previousTotal = sum(previousStart, previousEnd);
+  return {
+    recentTotal,
+    previousTotal,
+    difference: recentTotal - previousTotal,
+  };
+}
