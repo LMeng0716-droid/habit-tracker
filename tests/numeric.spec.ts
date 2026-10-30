@@ -442,7 +442,9 @@ test("timer crossing Beijing midnight is saved as separate daily records", async
   await study.getByRole("button", { name: "开始计时" }).click();
   await page.clock.runFor(120000);
   await study.getByRole("button", { name: "结束并保存计时" }).click();
-  await expect(page.getByRole("status").filter({ hasText: "已记录，云端数据已核对" })).toBeVisible();
+  await expect(
+    page.getByRole("status").filter({ hasText: "已记录，云端数据已核对" }),
+  ).toBeVisible();
   expect(
     api.rows
       .filter((row) => row.habit_id === "study")
