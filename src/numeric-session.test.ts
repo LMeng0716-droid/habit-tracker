@@ -34,7 +34,9 @@ describe("splitDurationSession", () => {
   it("supports sessions spanning multiple Beijing days", () => {
     const start = Date.parse("2026-10-28T16:00:00.000Z");
     const end = Date.parse("2026-10-30T16:00:00.000Z");
-    expect(splitDurationSession(start, end).map((x) => [x.date, x.minutes])).toEqual([
+    expect(
+      splitDurationSession(start, end).map((x) => [x.date, x.minutes]),
+    ).toEqual([
       ["2026-10-29", 1440],
       ["2026-10-30", 1440],
     ]);
