@@ -432,3 +432,23 @@ test("rapid repeated submit makes one record and permission failure never looks 
   expect(api.rows).toHaveLength(1);
   await expect(c.getByText("今日累计：1 / 5 次 · 已记录 1 笔")).toBeVisible();
 });
+
+test("timer crossing Beijing midnight is saved as separate daily records", async ({
+  page,
+}) => {
+  const api = await setup(page);
+  const study = card(page, "📚 学习");
+  await page.clock.setSystemTime(new Date("2026-10-11T15:59:00.000Z"));
+  await study.getByRole("button", { name: "开始计时" }).click();
+  await page.clock.runFor(120000);
+  await study.getByRole("button", { name: "结束并保存计时" }).click();
+  await expect(page.getByRole("status").filter({ hasText: "已记录，云端数据已核对" })).toBeVisible();
+  expect(
+    api.rows
+      .filter((row) => row.habit_id === "study")
+      .map((row) => [row.date, row.input_value]),
+  ).toEqual([
+    ["2026-10-11", 1],
+    ["2026-10-12", 1],
+  ]);
+});
