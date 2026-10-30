@@ -1,0 +1,47 @@
+name: V3 Sandbox Preview Build
+on:
+  push:
+    branches:
+      - feat/numeric-midnight-split
+    paths:
+      - .github/workflows/v3-sandbox-build.yml
+      - src/**
+      - tests/**
+      - scripts/**
+      - package.json
+      - package-lock.json
+      - index.html
+      - vite.config.ts
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: v3-sandbox-preview-build
+  cancel-in-progress: true
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/numeric-midnight-split
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run type-check
+      - run: npm run format:check
+      - run: npm test
+      - name: Build preview against isolated V3 sandbox
+        run: npm run build:preview
+        env:
+          VITE_SUPABASE_URL: https://qsveynvxjmrdugzerntu.supabase.co
+          VITE_SUPABASE_PUBLISHABLE_KEY: sb_publishable_KIY6Ha9jkWa0X0c3CiOycA_1YNte9nv
+      - uses: actions/upload-artifact@v4
+        with:
+          name: habit-tracker-preview-${{ github.sha }}
+          path: dist-preview/
+          if-no-files-found: error
+          retention-days: 7
