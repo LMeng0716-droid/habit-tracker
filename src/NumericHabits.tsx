@@ -390,8 +390,20 @@ export function NumericHabits({ accessToken }: { accessToken: string }) {
             const unit = h.habit_type === "duration" ? "分钟" : "次";
             const completed = numericProgressDates(h, habitProgress);
             const streak = streaks(completed, today);
-            const week = numericPeriodProgress(h, completed, weekStart(today), today, today);
-            const month = numericPeriodProgress(h, completed, `${today.slice(0, 7)}-01`, today, today);
+            const week = numericPeriodProgress(
+              h,
+              completed,
+              weekStart(today),
+              today,
+              today,
+            );
+            const month = numericPeriodProgress(
+              h,
+              completed,
+              `${today.slice(0, 7)}-01`,
+              today,
+              today,
+            );
             const heatmap = numericHeatmapDays(h, completed, today);
             const s = selection?.id === h.id ? selection : null;
             const visible = events.filter(
@@ -414,16 +426,31 @@ export function NumericHabits({ accessToken }: { accessToken: string }) {
                   今日累计：{p?.actual_value ?? 0} / {h.target ?? "—"} {unit} ·
                   已记录 {p?.event_count ?? 0} 笔
                 </p>
-                <section className="insights numeric-insights" aria-label={`${h.name}进度与成就`}>
+                <section
+                  className="insights numeric-insights"
+                  aria-label={`${h.name}进度与成就`}
+                >
                   <h4>进度与成就</h4>
-                  <p>本周 {week.completed}/{week.eligible} 天 · {week.rate === null ? "暂无统计" : `完成率 ${week.rate}%`}</p>
-                  <p>本月 {month.completed}/{month.eligible} 天 · {month.rate === null ? "暂无统计" : `完成率 ${month.rate}%`}</p>
-                  <p>当前连续 {streak.current} 天 · 最长连续 {streak.longest} 天</p>
+                  <p>
+                    本周 {week.completed}/{week.eligible} 天 ·
+                    {week.rate === null ? "暂无统计" : `完成率 ${week.rate}%`}
+                  </p>
+                  <p>
+                    本月 {month.completed}/{month.eligible} 天 ·
+                    {month.rate === null ? "暂无统计" : `完成率 ${month.rate}%`}
+                  </p>
+                  <p>
+                    当前连续 {streak.current} 天 · 最长连续 {streak.longest} 天
+                  </p>
                   <div className="streak-badges" aria-label="连续记录成就">
                     {[7, 21, 30].map((days) => (
                       <span
                         key={days}
-                        className={earnedStreakBadges(streak.longest).includes(days) ? "badge-earned" : "badge-locked"}
+                        className={
+                          earnedStreakBadges(streak.longest).includes(days)
+                            ? "badge-earned"
+                            : "badge-locked"
+                        }
                         aria-label={`${days}天徽章${streak.longest >= days ? "已获得" : "未获得"}`}
                       >
                         {streak.longest >= days ? "🏅" : "🔒"} {days}天
@@ -431,12 +458,28 @@ export function NumericHabits({ accessToken }: { accessToken: string }) {
                     ))}
                   </div>
                   <h4>过去365天</h4>
-                  <div className="year-heatmap" role="img" aria-label={`过去365天共有${heatmap.filter((day) => day.checked).length}天达成记录目标`}>
+                  <div
+                    className="year-heatmap"
+                    role="img"
+                    aria-label={`过去365天共有${heatmap.filter((day) => day.checked).length}天达成记录目标`}
+                  >
                     {heatmap.map((day) => (
                       <span
                         key={day.date}
-                        className={`heatmap-cell ${!day.eligible ? "heatmap-ineligible" : day.checked ? "heatmap-checked" : "heatmap-empty"}`}
-                        title={`${day.date} ${!day.eligible ? "未开始或不可记录" : day.checked ? "已达成记录目标" : "未达成记录目标"}`}
+                        className={`heatmap-cell ${
+                          !day.eligible
+                            ? "heatmap-ineligible"
+                            : day.checked
+                              ? "heatmap-checked"
+                              : "heatmap-empty"
+                        }`}
+                        title={`${day.date} ${
+                          !day.eligible
+                            ? "未开始或不可记录"
+                            : day.checked
+                              ? "已达成记录目标"
+                              : "未达成记录目标"
+                        }`}
                       />
                     ))}
                   </div>
