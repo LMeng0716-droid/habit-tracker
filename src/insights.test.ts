@@ -48,19 +48,19 @@ describe("insights", () => {
   it(
     "builds numeric completion dates, period rates, streaks and annual heatmap inputs",
     () => {
-    const numericHabit = {
-      id: "water",
-      created_date: "2026-10-01",
-      archived_on: null,
-      target: 5,
-      goal_direction: "at_least",
-    };
-    const progress = [
-      {
-        habit_id: "water",
-        date: "2026-10-01",
-        actual_value: 5,
-        event_count: 2,
+      const numericHabit = {
+        id: "water",
+        created_date: "2026-10-01",
+        archived_on: null,
+        target: 5,
+        goal_direction: "at_least",
+      };
+      const progress = [
+        {
+          habit_id: "water",
+          date: "2026-10-01",
+          actual_value: 5,
+          event_count: 2,
       },
       {
         habit_id: "water",
