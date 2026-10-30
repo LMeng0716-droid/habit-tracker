@@ -107,3 +107,48 @@ export function splitDurationSession(
   }
   return segments;
 }
+
+export type ActiveDurationTimer = {
+  id: string;
+  start: number;
+};
+
+export function timerOwnerId(accessToken: string): string | null {
+  try {
+    const payload = accessToken.split(".")[1];
+    if (!payload) return null;
+    const normalized = payload.replace(/-/g, "+").replace(/_/g, "/");
+    const decoded = atob(normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "="));
+    const subject = JSON.parse(decoded)?.sub;
+    return typeof subject === "string" && subject.length > 0
+      ? subject
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+export function parseActiveTimer(
+  raw: string | null,
+): ActiveDurationTimer | null {
+  if (!raw) return null;
+  try {
+    const value = JSON.parse(raw);
+    if (
+      !value ||
+      typeof value.id !== "string" ||
+      value.id.length === 0 ||
+      !Number.isFinite(value.start) ||
+      value.start <= 0
+    ) {
+      return null;
+    }
+    return { id: value.id, start: value.start };
+  } catch {
+    return null;
+  }
+}
+
+export function activeTimerStorageKey(ownerId: string): string {
+  return `habit-tracker:numeric-timer:v1:${ownerId}`;
+}
