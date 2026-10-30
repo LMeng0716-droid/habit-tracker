@@ -133,8 +133,7 @@ export function numericTrend(
   const sum = (from: string, to: string) =>
     progress
       .filter(
-        (day) =>
-          day.habit_id === habitId && day.date >= from && day.date <= to,
+        (day) => day.habit_id === habitId && day.date >= from && day.date <= to,
       )
       .reduce((total, day) => total + day.actual_value, 0);
   const recentTotal = sum(recentStart, today);
