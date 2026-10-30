@@ -609,13 +609,14 @@ export function NumericHabits({ accessToken }: { accessToken: string }) {
                           onClick={() => {
                             const segments =
                               activeTimer.pending ??
-                              splitDurationSession(activeTimer.start, clock).map(
-                                (segment) => ({
-                                  ...segment,
-                                  operationId: crypto.randomUUID(),
-                                  eventId: crypto.randomUUID(),
-                                }),
-                              );
+                              splitDurationSession(
+                                activeTimer.start,
+                                clock,
+                              ).map((segment) => ({
+                                ...segment,
+                                operationId: crypto.randomUUID(),
+                                eventId: crypto.randomUUID(),
+                              }));
                             if (!segments.length) {
                               setError("计时不足一分钟，不会生成记录。");
                               return;
@@ -632,7 +633,10 @@ export function NumericHabits({ accessToken }: { accessToken: string }) {
                               setError("单日计时超过1440分钟上限，无法保存。");
                               return;
                             }
-                            const pendingTimer = { ...activeTimer, pending: segments };
+                            const pendingTimer = {
+                              ...activeTimer,
+                              pending: segments,
+                            };
                             setTimer(pendingTimer);
                             try {
                               if (timerKey)
@@ -645,7 +649,9 @@ export function NumericHabits({ accessToken }: { accessToken: string }) {
                                   }),
                                 );
                             } catch {
-                              setError("无法在本机保存待提交记录，请检查浏览器存储权限。");
+                              setError(
+                                "无法在本机保存待提交记录，请检查浏览器存储权限。",
+                              );
                               return;
                             }
                             void submit(async () => {

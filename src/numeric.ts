@@ -174,7 +174,11 @@ export function parseActiveTimer(
         return item as unknown as PendingDurationSegment;
       });
     }
-    return { id: value.id, start: value.start, ...(pending ? { pending } : {}) };
+    return {
+      id: value.id,
+      start: value.start,
+      ...(pending ? { pending } : {}),
+    };
   } catch {
     return null;
   }

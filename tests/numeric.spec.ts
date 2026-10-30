@@ -449,7 +449,9 @@ test("timer crossing Beijing midnight is saved as separate daily records", async
   expect(api.rows.filter((row) => row.habit_id === "study")).toHaveLength(1);
   await page.reload();
   const restored = card(page, "📚 学习");
-  await expect(restored.getByRole("button", { name: "结束并保存计时" })).toBeVisible();
+  await expect(
+    restored.getByRole("button", { name: "结束并保存计时" }),
+  ).toBeVisible();
   await restored.getByRole("button", { name: "结束并保存计时" }).click();
   await expect(
     restored.getByText("今日累计：10 / 120 分钟 · 已记录 1 笔"),
