@@ -446,7 +446,7 @@ test("timer crossing Beijing midnight is saved as separate daily records", async
   const api = await setup(page, new Date("2026-10-11T15:50:00.000Z"));
   const study = card(page, "📚 学习");
   await study.getByRole("button", { name: "开始计时" }).click();
-  await page.clock.fastForward(1200000);
+  await page.clock.runFor(1200000);
   api.lose();
   await study.getByRole("button", { name: "结束并保存计时" }).click();
   await expect(page.getByRole("alert")).toContainText("已重新读取云端");
