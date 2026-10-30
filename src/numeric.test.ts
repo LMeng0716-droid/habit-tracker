@@ -51,11 +51,22 @@ describe("numeric input and actionable errors", () => {
       activeTimerStorageKey("user-456"),
     );
     expect(
-      parseActiveTimer(JSON.stringify({ id: "study", start: 1000 })),
-    ).toEqual({
-      id: "study",
-      start: 1000,
-    });
+      parseActiveTimer(
+        JSON.stringify({
+          id: "study",
+          start: 1000,
+          pending: [
+            {
+              date: "2026-10-11",
+              minutes: 10,
+              occurredAt: "2026-10-11T15:59:59.999Z",
+              operationId: "operation-1",
+              eventId: "event-1",
+            },
+          ],
+        }),
+      )?.pending,
+    ).toHaveLength(1);
     for (const invalid of [
       null,
       "not-json",
