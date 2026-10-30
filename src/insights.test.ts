@@ -61,38 +61,38 @@ describe("insights", () => {
           date: "2026-10-01",
           actual_value: 5,
           event_count: 2,
-      },
-      {
-        habit_id: "water",
-        date: "2026-10-02",
-        actual_value: 3,
-        event_count: 1,
-      },
-      {
-        habit_id: "water",
+        },
+        {
+          habit_id: "water",
+          date: "2026-10-02",
+          actual_value: 3,
+          event_count: 1,
+        },
+        {
+          habit_id: "water",
+          date: "2026-10-03",
+          actual_value: 6,
+          event_count: 2,
+        },
+      ];
+      const dates = numericProgressDates(numericHabit, progress);
+      expect([...dates].sort()).toEqual(["2026-10-01", "2026-10-03"]);
+      expect(
+        numericPeriodProgress(
+          numericHabit,
+          dates,
+          "2026-10-01",
+          "2026-10-03",
+          "2026-10-03",
+        ),
+      ).toEqual({ completed: 2, eligible: 3, rate: 67 });
+      const days = numericHeatmapDays(numericHabit, dates, "2026-10-03");
+      expect(days).toHaveLength(365);
+      expect(days.at(-1)).toMatchObject({
         date: "2026-10-03",
-        actual_value: 6,
-        event_count: 2,
-      },
-    ];
-    const dates = numericProgressDates(numericHabit, progress);
-    expect([...dates].sort()).toEqual(["2026-10-01", "2026-10-03"]);
-    expect(
-      numericPeriodProgress(
-        numericHabit,
-        dates,
-        "2026-10-01",
-        "2026-10-03",
-        "2026-10-03",
-      ),
-    ).toEqual({ completed: 2, eligible: 3, rate: 67 });
-    const days = numericHeatmapDays(numericHabit, dates, "2026-10-03");
-    expect(days).toHaveLength(365);
-    expect(days.at(-1)).toMatchObject({
-      date: "2026-10-03",
-      eligible: true,
-      checked: true,
-    });
+        eligible: true,
+        checked: true,
+      });
     },
   );
 });
