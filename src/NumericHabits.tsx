@@ -411,7 +411,10 @@ export function NumericHabits({ accessToken }: { accessToken: string }) {
               </label>
               <label>
                 图标
-                <select value={emoji} onChange={(e) => setEmoji(e.target.value)}>
+                <select
+                  value={emoji}
+                  onChange={(e) => setEmoji(e.target.value)}
+                >
                   {EMOJI.map((icon) => (
                     <option key={icon}>{icon}</option>
                   ))}
@@ -443,12 +446,14 @@ export function NumericHabits({ accessToken }: { accessToken: string }) {
                 />
               </label>
               <button
-                disabled={disabled || !name.trim() || !normalValue(target, mode)}
+                disabled={
+                  disabled || !name.trim() || !normalValue(target, mode)
+                }
               >
                 创建计次／计时习惯
               </button>
             </form>
-            </details>
+          </details>
           {habits.map((h) => {
             const habitProgress = progress.filter((p) => p.habit_id === h.id);
             const p = habitProgress.find((p) => p.date === today);
@@ -652,10 +657,13 @@ export function NumericHabits({ accessToken }: { accessToken: string }) {
                     </p>
                     <p>
                       本月 {month.completed}/{month.eligible} 天 ·
-                      {month.rate === null ? "暂无统计" : `完成率 ${month.rate}%`}
+                      {month.rate === null
+                        ? "暂无统计"
+                        : `完成率 ${month.rate}%`}
                     </p>
                     <p>
-                      当前连续 {streak.current} 天 · 最长连续 {streak.longest} 天
+                      当前连续 {streak.current} 天 · 最长连续 {streak.longest}{" "}
+                      天
                     </p>
                     <p>
                       近7天趋势：{trend.recentTotal} {unit} · 前7天：
@@ -708,7 +716,7 @@ export function NumericHabits({ accessToken }: { accessToken: string }) {
                       ))}
                     </div>
                   </section>
-                  </details>
+                </details>
                 <label>
                   查看记录日期
                   <input

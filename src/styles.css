@@ -914,7 +914,15 @@ progress {
 .numeric-panel .numeric-collapsible[open] > summary {
   margin-bottom: 0.75rem;
 }
-.numeric-item > h4 { margin: 0.35rem 0; }
-.numeric-item > p { margin: 0.45rem 0; }
-.numeric-item > form { margin: 0.65rem 0; }
-.numeric-item > div > button { margin: 0.35rem 0.4rem 0.35rem 0; }
+.numeric-item > h4 {
+  margin: 0.35rem 0;
+}
+.numeric-item > p {
+  margin: 0.45rem 0;
+}
+.numeric-item > form {
+  margin: 0.65rem 0;
+}
+.numeric-item > div > button {
+  margin: 0.35rem 0.4rem 0.35rem 0;
+}

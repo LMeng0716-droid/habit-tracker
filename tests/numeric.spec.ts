@@ -278,7 +278,9 @@ test("mobile count/duration create, independent same-day records, revise and voi
   await expect(study.getByText("查看进度、成就与年度热力图")).toBeVisible();
   await expect(study.getByRole("heading", { name: "进度与成就" })).toBeHidden();
   await study.getByText("查看进度、成就与年度热力图").click();
-  await expect(study.getByRole("heading", { name: "进度与成就" })).toBeVisible();
+  await expect(
+    study.getByRole("heading", { name: "进度与成就" }),
+  ).toBeVisible();
   await add(page, "2");
   await expect(
     card(page).getByText("今日累计：2 / 5 次 · 已记录 1 笔"),
