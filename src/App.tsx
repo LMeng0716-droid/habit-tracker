@@ -963,7 +963,7 @@ export default function App() {
                 })
               }
             >
-              ＋ 创建普通打卡习惯
+              创建习惯
             </button>
             {(import.meta.env.DEV ||
               import.meta.env.BASE_URL === PREVIEW_BASE) && (
