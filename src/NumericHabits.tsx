@@ -377,76 +377,78 @@ export function NumericHabits({ accessToken }: { accessToken: string }) {
       )}
       {available && (
         <>
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              const goal = normalValue(target, mode);
-              if (!goal || !name.trim() || disabled) return;
-              const id = crypto.randomUUID();
-              void submit(async () => {
-                await rpc("create_habit_v3", {
-                  p_id: id,
-                  p_name: name.trim(),
-                  p_color: 0,
-                  p_emoji: emoji,
-                  p_type: mode,
-                  p_target: goal,
-                  p_unit: mode === "count" ? "repetition" : "minute",
-                  p_direction: "at_least",
+          <details className="numeric-collapsible numeric-create">
+            <summary>＋ 创建计次或计时习惯</summary>
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                const goal = normalValue(target, mode);
+                if (!goal || !name.trim() || disabled) return;
+                const id = crypto.randomUUID();
+                void submit(async () => {
+                  await rpc("create_habit_v3", {
+                    p_id: id,
+                    p_name: name.trim(),
+                    p_color: 0,
+                    p_emoji: emoji,
+                    p_type: mode,
+                    p_target: goal,
+                    p_unit: mode === "count" ? "repetition" : "minute",
+                    p_direction: "at_least",
+                  });
+                  if (alive.current) setName("");
                 });
-                if (alive.current) setName("");
-              });
-            }}
-          >
-            <h4>创建新习惯</h4>
-            <label>
-              名称
-              <input
-                value={name}
-                required
-                maxLength={30}
-                onChange={(e) => setName(e.target.value)}
-              />
-            </label>
-            <label>
-              图标
-              <select value={emoji} onChange={(e) => setEmoji(e.target.value)}>
-                {EMOJI.map((icon) => (
-                  <option key={icon}>{icon}</option>
-                ))}
-              </select>
-            </label>
-            <label>
-              记录类型
-              <select
-                value={mode}
-                onChange={(e) => {
-                  const m = e.target.value as Mode;
-                  setMode(m);
-                  setTarget(m === "count" ? "5" : "30");
-                }}
-              >
-                <option value="count">计次</option>
-                <option value="duration">计时（分钟）</option>
-              </select>
-            </label>
-            <label>
-              每日目标
-              <input
-                type="number"
-                inputMode="numeric"
-                min="1"
-                max={mode === "count" ? 1000000 : 1440}
-                value={target}
-                onChange={(e) => setTarget(e.target.value)}
-              />
-            </label>
-            <button
-              disabled={disabled || !name.trim() || !normalValue(target, mode)}
+              }}
             >
-              创建计次／计时习惯
-            </button>
-          </form>
+              <label>
+                名称
+                <input
+                  value={name}
+                  required
+                  maxLength={30}
+                  onChange={(e) => setName(e.target.value)}
+                />
+              </label>
+              <label>
+                图标
+                <select value={emoji} onChange={(e) => setEmoji(e.target.value)}>
+                  {EMOJI.map((icon) => (
+                    <option key={icon}>{icon}</option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                记录类型
+                <select
+                  value={mode}
+                  onChange={(e) => {
+                    const m = e.target.value as Mode;
+                    setMode(m);
+                    setTarget(m === "count" ? "5" : "30");
+                  }}
+                >
+                  <option value="count">计次</option>
+                  <option value="duration">计时（分钟）</option>
+                </select>
+              </label>
+              <label>
+                每日目标
+                <input
+                  type="number"
+                  inputMode="numeric"
+                  min="1"
+                  max={mode === "count" ? 1000000 : 1440}
+                  value={target}
+                  onChange={(e) => setTarget(e.target.value)}
+                />
+              </label>
+              <button
+                disabled={disabled || !name.trim() || !normalValue(target, mode)}
+              >
+                创建计次／计时习惯
+              </button>
+            </form>
+            </details>
           {habits.map((h) => {
             const habitProgress = progress.filter((p) => p.habit_id === h.id);
             const p = habitProgress.find((p) => p.date === today);
@@ -490,73 +492,6 @@ export function NumericHabits({ accessToken }: { accessToken: string }) {
                   今日累计：{p?.actual_value ?? 0} / {h.target ?? "—"} {unit} ·
                   已记录 {p?.event_count ?? 0} 笔
                 </p>
-                <section
-                  className="insights numeric-insights"
-                  aria-label={`${h.name}进度与成就`}
-                >
-                  <h4>进度与成就</h4>
-                  <p>
-                    本周 {week.completed}/{week.eligible} 天 ·
-                    {week.rate === null ? "暂无统计" : `完成率 ${week.rate}%`}
-                  </p>
-                  <p>
-                    本月 {month.completed}/{month.eligible} 天 ·
-                    {month.rate === null ? "暂无统计" : `完成率 ${month.rate}%`}
-                  </p>
-                  <p>
-                    当前连续 {streak.current} 天 · 最长连续 {streak.longest} 天
-                  </p>
-                  <p>
-                    近7天趋势：{trend.recentTotal} {unit} · 前7天：
-                    {trend.previousTotal} {unit} ·
-                    {trend.difference > 0
-                      ? `增加 ${trend.difference}`
-                      : trend.difference < 0
-                        ? `减少 ${Math.abs(trend.difference)}`
-                        : "保持不变"}
-                  </p>
-                  <div className="streak-badges" aria-label="连续记录成就">
-                    {[7, 21, 30].map((days) => (
-                      <span
-                        key={days}
-                        className={
-                          earnedStreakBadges(streak.longest).includes(days)
-                            ? "badge-earned"
-                            : "badge-locked"
-                        }
-                        aria-label={`${days}天徽章${streak.longest >= days ? "已获得" : "未获得"}`}
-                      >
-                        {streak.longest >= days ? "🏅" : "🔒"} {days}天
-                      </span>
-                    ))}
-                  </div>
-                  <h4>过去365天</h4>
-                  <div
-                    className="year-heatmap"
-                    role="img"
-                    aria-label={`过去365天共有${heatmap.filter((day) => day.checked).length}天达成记录目标`}
-                  >
-                    {heatmap.map((day) => (
-                      <span
-                        key={day.date}
-                        className={`heatmap-cell ${
-                          !day.eligible
-                            ? "heatmap-ineligible"
-                            : day.checked
-                              ? "heatmap-checked"
-                              : "heatmap-empty"
-                        }`}
-                        title={`${day.date} ${
-                          !day.eligible
-                            ? "未开始或不可记录"
-                            : day.checked
-                              ? "已达成记录目标"
-                              : "未达成记录目标"
-                        }`}
-                      />
-                    ))}
-                  </div>
-                </section>
                 {!h.archived_on && (
                   <form
                     onSubmit={(e) => {
@@ -704,6 +639,76 @@ export function NumericHabits({ accessToken }: { accessToken: string }) {
                     )}
                   </div>
                 )}
+                <details className="numeric-collapsible">
+                  <summary>查看进度、成就与年度热力图</summary>
+                  <section
+                    className="insights numeric-insights"
+                    aria-label={`${h.name}进度与成就`}
+                  >
+                    <h4>进度与成就</h4>
+                    <p>
+                      本周 {week.completed}/{week.eligible} 天 ·
+                      {week.rate === null ? "暂无统计" : `完成率 ${week.rate}%`}
+                    </p>
+                    <p>
+                      本月 {month.completed}/{month.eligible} 天 ·
+                      {month.rate === null ? "暂无统计" : `完成率 ${month.rate}%`}
+                    </p>
+                    <p>
+                      当前连续 {streak.current} 天 · 最长连续 {streak.longest} 天
+                    </p>
+                    <p>
+                      近7天趋势：{trend.recentTotal} {unit} · 前7天：
+                      {trend.previousTotal} {unit} ·
+                      {trend.difference > 0
+                        ? `增加 ${trend.difference}`
+                        : trend.difference < 0
+                          ? `减少 ${Math.abs(trend.difference)}`
+                          : "保持不变"}
+                    </p>
+                    <div className="streak-badges" aria-label="连续记录成就">
+                      {[7, 21, 30].map((days) => (
+                        <span
+                          key={days}
+                          className={
+                            earnedStreakBadges(streak.longest).includes(days)
+                              ? "badge-earned"
+                              : "badge-locked"
+                          }
+                          aria-label={`${days}天徽章${streak.longest >= days ? "已获得" : "未获得"}`}
+                        >
+                          {streak.longest >= days ? "🏅" : "🔒"} {days}天
+                        </span>
+                      ))}
+                    </div>
+                    <h4>过去365天</h4>
+                    <div
+                      className="year-heatmap"
+                      role="img"
+                      aria-label={`过去365天共有${heatmap.filter((day) => day.checked).length}天达成记录目标`}
+                    >
+                      {heatmap.map((day) => (
+                        <span
+                          key={day.date}
+                          className={`heatmap-cell ${
+                            !day.eligible
+                              ? "heatmap-ineligible"
+                              : day.checked
+                                ? "heatmap-checked"
+                                : "heatmap-empty"
+                          }`}
+                          title={`${day.date} ${
+                            !day.eligible
+                              ? "未开始或不可记录"
+                              : day.checked
+                                ? "已达成记录目标"
+                                : "未达成记录目标"
+                          }`}
+                        />
+                      ))}
+                    </div>
+                  </section>
+                  </details>
                 <label>
                   查看记录日期
                   <input
