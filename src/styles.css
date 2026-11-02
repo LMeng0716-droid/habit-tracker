@@ -895,3 +895,26 @@ progress {
 .numeric-events button {
   margin-left: 0.5rem;
 }
+
+.numeric-panel .numeric-collapsible {
+  border: 1px solid rgba(30, 70, 48, 0.17);
+  border-radius: 12px;
+  padding: 0.7rem 0.85rem;
+  margin: 0.8rem 0;
+  background: rgba(247, 251, 248, 0.8);
+}
+.numeric-panel .numeric-collapsible > summary {
+  cursor: pointer;
+  font-weight: 650;
+  color: #23634e;
+  min-height: 36px;
+  display: list-item;
+  align-content: center;
+}
+.numeric-panel .numeric-collapsible[open] > summary {
+  margin-bottom: 0.75rem;
+}
+.numeric-item > h4 { margin: 0.35rem 0; }
+.numeric-item > p { margin: 0.45rem 0; }
+.numeric-item > form { margin: 0.65rem 0; }
+.numeric-item > div > button { margin: 0.35rem 0.4rem 0.35rem 0; }
