@@ -269,9 +269,16 @@ test("mobile count/duration create, independent same-day records, revise and voi
 }) => {
   const api = await setup(page);
   const panel = page.getByRole("region", { name: "计次和计时习惯" });
+  await panel.getByText("＋ 创建计次或计时习惯").click();
   await panel.getByLabel("名称", { exact: true }).fill("俯卧撑");
   await panel.getByRole("button", { name: "创建计次／计时习惯" }).click();
   await expect(page.getByRole("heading", { name: "🌱 俯卧撑" })).toBeVisible();
+  const study = card(page, "📚 学习");
+  await expect(study.getByRole("button", { name: "开始计时" })).toBeVisible();
+  await expect(study.getByText("查看进度、成就与年度热力图")).toBeVisible();
+  await expect(study.getByRole("heading", { name: "进度与成就" })).toBeHidden();
+  await study.getByText("查看进度、成就与年度热力图").click();
+  await expect(study.getByRole("heading", { name: "进度与成就" })).toBeVisible();
   await add(page, "2");
   await expect(
     card(page).getByText("今日累计：2 / 5 次 · 已记录 1 笔"),
