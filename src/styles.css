@@ -334,7 +334,7 @@ progress {
   text-align: left;
   cursor: pointer;
 }
-.habit-detail-entry .habit-title {
+.habit-detail-entry {
   font-size: 17px;
   font-weight: 700;
   line-height: 1.4;
