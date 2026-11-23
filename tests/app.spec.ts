@@ -380,7 +380,10 @@ test("historical dates, denominator and streak", async ({ page }) => {
   await backend(page);
   await page.goto("./");
   await login(page);
-  await page.getByRole("button", { name: "查看「阅读」的打卡历史" }).click();
+  const historyButton = page.getByRole("button", {
+    name: "查看「阅读」的打卡历史",
+  });
+  await historyButton.click();
   await expect(page.getByText("当前连续 2 天 · 最长连续 2 天")).toBeVisible();
   await expect(
     page
@@ -1313,7 +1316,7 @@ test("iPhone left-edge swipe returns from a habit history screen to Today", asyn
     );
   });
   await expect(
-    page.getByRole("button", { name: "查看「阅读」的打卡历史" }),
+    historyButton,
   ).toBeVisible();
   await expect(
     page.getByRole("button", { name: "今天", exact: true }),
