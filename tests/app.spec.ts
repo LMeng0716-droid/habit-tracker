@@ -1264,3 +1264,52 @@ test("reload recovery waits for confirmed asynchronous login, not the submit cli
     page.getByRole("heading", { name: "阅读", exact: true }),
   ).toBeVisible();
 });
+
+
+test("iPhone left-edge swipe returns from a habit history screen to Today", async ({
+  page,
+}) => {
+  await backend(page);
+  await page.goto("./");
+  await login(page);
+  await page.getByRole("button", { name: "查看「阅读」的打卡历史" }).click();
+  await expect(
+    page.getByRole("heading", { name: "阅读 · 打卡历史", exact: true }),
+  ).toBeVisible();
+  await page.evaluate(() => {
+    const makeTouch = (x: number, y: number) =>
+      new Touch({ identifier: 1, target: document.body, clientX: x, clientY: y });
+    const start = makeTouch(5, 300);
+    document.dispatchEvent(
+      new TouchEvent("touchstart", {
+        bubbles: true,
+        cancelable: true,
+        touches: [start],
+        changedTouches: [start],
+      }),
+    );
+    const move = makeTouch(120, 304);
+    document.dispatchEvent(
+      new TouchEvent("touchmove", {
+        bubbles: true,
+        cancelable: true,
+        touches: [move],
+        changedTouches: [move],
+      }),
+    );
+    document.dispatchEvent(
+      new TouchEvent("touchend", {
+        bubbles: true,
+        cancelable: true,
+        touches: [],
+        changedTouches: [move],
+      }),
+    );
+  });
+  await expect(
+    page.getByRole("heading", { name: "阅读", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "今天", exact: true }),
+  ).toHaveAttribute("aria-current", "page");
+});
