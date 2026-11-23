@@ -232,6 +232,7 @@ async function setup(
   await page.getByLabel("邮箱", { exact: true }).fill("owner@example.test");
   await page.getByLabel("密码", { exact: true }).fill("password123");
   await page.getByRole("button", { name: "登录", exact: true }).click();
+  await page.getByRole("button", { name: "计次/计时" }).click();
   await expect(
     page.getByRole("heading", { name: "💧 喝水", exact: true }),
   ).toBeVisible();
@@ -320,6 +321,7 @@ test("mobile count/duration create, independent same-day records, revise and voi
     card(page, "📚 学习").getByText("今日累计：60 / 120 分钟 · 已记录 1 笔"),
   ).toBeVisible();
   await page.reload();
+  await page.getByRole("button", { name: "计次/计时" }).click();
   await expect(
     card(page, "📚 学习").getByText("今日累计：60 / 120 分钟 · 已记录 1 笔"),
   ).toBeVisible();
@@ -461,6 +463,7 @@ test("timer crossing Beijing midnight is saved as separate daily records", async
   await expect(page.getByRole("alert")).toContainText("已重新读取云端");
   expect(api.rows.filter((row) => row.habit_id === "study")).toHaveLength(1);
   await page.reload();
+  await page.getByRole("button", { name: "计次/计时" }).click();
   const restored = card(page, "📚 学习");
   await expect(
     restored.getByRole("button", { name: "结束并保存计时" }),
@@ -485,6 +488,7 @@ test("active duration timer resumes after a full page reload", async ({
   await study.getByRole("button", { name: "开始计时" }).click();
   await page.clock.fastForward(61000);
   await page.reload();
+  await page.getByRole("button", { name: "计次/计时" }).click();
   const restored = card(page, "📚 学习");
   await expect(restored.getByText("已计时 61 秒")).toBeVisible();
   await page.clock.fastForward(61000);
