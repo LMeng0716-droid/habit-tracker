@@ -324,7 +324,7 @@ test("login, daily checkin/cancel and logout recovery from cloud", async ({
   ).toBeVisible();
   await page.reload();
   await login(page);
-  await page.getByRole("button", { name: "历史", exact: true }).click();
+  await page.getByRole("button", { name: "查看「阅读」的打卡历史" }).click();
   await expect(
     page.getByRole("button", { name: "2026-10-09 已打卡" }),
   ).toHaveAttribute("aria-pressed", "true");
@@ -355,8 +355,13 @@ test("create, edit, historical checkin and archive preserves today's completion"
     has: page.getByRole("heading", { name: "运动十分钟", exact: true }),
   });
   await updated.getByRole("button", { name: "打卡", exact: true }).click();
-  await page.getByRole("button", { name: "历史", exact: true }).click();
-  await page.locator("select").first().selectOption({ label: "运动十分钟" });
+  await updated
+    .getByRole("button", { name: "查看「运动十分钟」的打卡历史" })
+    .click();
+  await expect(
+    page.getByRole("heading", { name: /运动十分钟 · 打卡历史/ }),
+  ).toBeVisible();
+  await expect(page.getByText("累计打卡 1 天 · 进行中")).toBeVisible();
   await expect(
     page.getByRole("button", { name: "2026-10-11 已打卡" }),
   ).toBeEnabled();
@@ -373,7 +378,7 @@ test("historical dates, denominator and streak", async ({ page }) => {
   await backend(page);
   await page.goto("./");
   await login(page);
-  await page.getByRole("button", { name: "历史", exact: true }).click();
+  await page.getByRole("button", { name: "查看「阅读」的打卡历史" }).click();
   await expect(page.getByText("当前连续 2 天 · 最长连续 2 天")).toBeVisible();
   await expect(
     page
