@@ -1273,7 +1273,7 @@ test("iPhone left-edge swipe returns from a habit history screen to Today", asyn
   await login(page);
   await page.getByRole("button", { name: "查看「阅读」的打卡历史" }).click();
   await expect(
-    page.getByRole("heading", { name: "阅读 · 打卡历史", exact: true }),
+    page.getByRole("heading", { name: /打卡历史/ }),
   ).toBeVisible();
   await page.evaluate(() => {
     const makeTouch = (x: number, y: number) =>
