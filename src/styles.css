@@ -320,6 +320,40 @@ progress {
 .habit-main {
   min-width: 0;
 }
+.habit-detail-entry {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  width: 100%;
+  min-height: 36px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #203c33;
+  text-align: left;
+  cursor: pointer;
+}
+.habit-detail-entry .habit-title {
+  font-size: 17px;
+  font-weight: 700;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+.habit-detail-hint {
+  font-size: 12px;
+  color: #23634e;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.habit-detail-entry:focus-visible {
+  outline: 3px solid #e3aa34;
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+.history-back {
+  margin-bottom: 12px;
+}
 .check-button {
   padding: 6px;
   min-width: 48px;
