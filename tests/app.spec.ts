@@ -1278,7 +1278,12 @@ test("iPhone left-edge swipe returns from a habit history screen to Today", asyn
   ).toBeVisible();
   await page.evaluate(() => {
     const makeTouch = (x: number, y: number) =>
-      new Touch({ identifier: 1, target: document.body, clientX: x, clientY: y });
+      new Touch({
+        identifier: 1,
+        target: document.body,
+        clientX: x,
+        clientY: y,
+      });
     const start = makeTouch(5, 300);
     document.dispatchEvent(
       new TouchEvent("touchstart", {
