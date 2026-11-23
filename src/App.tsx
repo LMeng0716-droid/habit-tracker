@@ -123,6 +123,65 @@ export default function App() {
   const readGeneration = useRef(0);
   const accountEpoch = useRef(0);
 
+  // In the standalone iPhone app there may be no browser chrome to provide
+  // a back control. Re-create the familiar left-edge swipe for the habit
+  // detail/history screen while leaving vertical scrolling untouched.
+  useEffect(() => {
+    if (page !== "history") return;
+    let startX = 0;
+    let startY = 0;
+    let tracking = false;
+    let claimed = false;
+    const onTouchStart = (event: TouchEvent) => {
+      if (event.touches.length !== 1) return;
+      const touch = event.touches[0];
+      if (touch.clientX > 32) return;
+      startX = touch.clientX;
+      startY = touch.clientY;
+      tracking = true;
+      claimed = false;
+    };
+    const onTouchMove = (event: TouchEvent) => {
+      if (!tracking || event.touches.length !== 1) return;
+      const touch = event.touches[0];
+      const dx = touch.clientX - startX;
+      const dy = touch.clientY - startY;
+      if (Math.abs(dy) > 36 && Math.abs(dy) > Math.abs(dx)) {
+        tracking = false;
+        return;
+      }
+      if (dx > 12 && dx > Math.abs(dy) * 1.25) {
+        claimed = true;
+        if (event.cancelable) event.preventDefault();
+      } else if (dx < -12) {
+        tracking = false;
+      }
+    };
+    const onTouchEnd = (event: TouchEvent) => {
+      if (!tracking) return;
+      const touch = event.changedTouches[0];
+      const dx = touch ? touch.clientX - startX : 0;
+      const dy = touch ? touch.clientY - startY : 0;
+      if (claimed && dx >= 72 && Math.abs(dy) <= 100) setPage("today");
+      tracking = false;
+      claimed = false;
+    };
+    const onTouchCancel = () => {
+      tracking = false;
+      claimed = false;
+    };
+    document.addEventListener("touchstart", onTouchStart, { passive: true });
+    document.addEventListener("touchmove", onTouchMove, { passive: false });
+    document.addEventListener("touchend", onTouchEnd, { passive: true });
+    document.addEventListener("touchcancel", onTouchCancel, { passive: true });
+    return () => {
+      document.removeEventListener("touchstart", onTouchStart);
+      document.removeEventListener("touchmove", onTouchMove);
+      document.removeEventListener("touchend", onTouchEnd);
+      document.removeEventListener("touchcancel", onTouchCancel);
+    };
+  }, [page]);
+
   useEffect(() => {
     if (!cloud) return;
     let alive = true;
