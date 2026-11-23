@@ -1265,7 +1265,6 @@ test("reload recovery waits for confirmed asynchronous login, not the submit cli
   ).toBeVisible();
 });
 
-
 test("iPhone left-edge swipe returns from a habit history screen to Today", async ({
   page,
 }) => {
