@@ -10,6 +10,8 @@ jobs:
           node-version: '24'
           cache: npm
       - run: npm ci
+      - name: Diagnose Prettier output
+        run: npx prettier tests/app.spec.ts > /tmp/app.spec.formatted.ts && diff -u tests/app.spec.ts /tmp/app.spec.formatted.ts || true
       - run: npm run format:check
       - run: npm test
       - run: npm run build
