@@ -109,7 +109,9 @@ export default function App() {
   const [form, setForm] = useState<Form | null>(null);
   const draggingHabit = useRef<string | null>(null);
   const touchHabit = useRef<string | null>(null);
-  const [page, setPage] = useState<"today" | "numeric" | "history" | "account">("today");
+  const [page, setPage] = useState<"today" | "numeric" | "history" | "account">(
+    "today",
+  );
   const [managing, setManaging] = useState(false);
   const [emojiDraft, setEmojiDraft] = useState("");
   const [draggingId, setDraggingId] = useState<string | null>(null);
