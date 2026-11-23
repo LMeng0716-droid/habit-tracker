@@ -324,9 +324,7 @@ test("login, daily checkin/cancel and logout recovery from cloud", async ({
   ).toBeVisible();
   await page.reload();
   await login(page);
-  await page
-    .getByRole("button", { name: "查看「阅读」的打卡历史" })
-    .click();
+  await page.getByRole("button", { name: "查看「阅读」的打卡历史" }).click();
   await expect(
     page.getByRole("button", { name: "2026-10-09 已打卡" }),
   ).toHaveAttribute("aria-pressed", "true");
@@ -380,10 +378,7 @@ test("historical dates, denominator and streak", async ({ page }) => {
   await backend(page);
   await page.goto("./");
   await login(page);
-  const historyButton = page.getByRole("button", {
-    name: "查看「阅读」的打卡历史",
-  });
-  await historyButton.click();
+  await page.getByRole("button", { name: "查看「阅读」的打卡历史" }).click();
   await expect(page.getByText("当前连续 2 天 · 最长连续 2 天")).toBeVisible();
   await expect(
     page
@@ -1276,7 +1271,10 @@ test("iPhone left-edge swipe returns from a habit history screen to Today", asyn
   await backend(page);
   await page.goto("./");
   await login(page);
-  await page.getByRole("button", { name: "查看「阅读」的打卡历史" }).click();
+  const historyButton = page.getByRole("button", {
+    name: "查看「阅读」的打卡历史",
+  });
+  await historyButton.click();
   await expect(
     page.getByRole("heading", { name: /打卡历史/ }),
   ).toBeVisible();
