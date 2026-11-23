@@ -1077,19 +1077,21 @@ export default function App() {
                       {h.emoji}
                     </span>
                     <div className="habit-main">
-                      <button
-                        type="button"
-                        className="habit-detail-entry"
-                        aria-label={`查看「${h.name}」的打卡历史`}
-                        onClick={() => {
-                          setSelectedId(h.id);
-                          setMonth(today.slice(0, 7));
-                          setPage("history");
-                        }}
-                      >
-                        <span className="habit-title">{h.name}</span>
-                        <span className="habit-detail-hint">查看历史 ›</span>
-                      </button>
+                      <h3>
+                        <button
+                          type="button"
+                          className="habit-detail-entry"
+                          aria-label={`查看「${h.name}」的打卡历史`}
+                          onClick={() => {
+                            setSelectedId(h.id);
+                            setMonth(today.slice(0, 7));
+                            setPage("history");
+                          }}
+                        >
+                          {h.name}
+                        </button>
+                      </h3>
+                      <span className="habit-detail-hint">查看历史 ›</span>
                       {celebrating[h.id] && (
                         <span className="card-success" key={celebrating[h.id]}>
                           <StarParticles />
