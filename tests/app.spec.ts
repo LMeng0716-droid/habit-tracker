@@ -1315,9 +1315,7 @@ test("iPhone left-edge swipe returns from a habit history screen to Today", asyn
       }),
     );
   });
-  await expect(
-    historyButton,
-  ).toBeVisible();
+  await expect(historyButton).toBeVisible();
   await expect(
     page.getByRole("button", { name: "今天", exact: true }),
   ).toHaveAttribute("aria-current", "page");
