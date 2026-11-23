@@ -1396,9 +1396,7 @@ export default function App() {
         {(
           [
             ["today", "今天"],
-            ...(import.meta.env.DEV || import.meta.env.BASE_URL === PREVIEW_BASE
-              ? ([["numeric", "计次/计时"]] as const)
-              : []),
+            ["numeric", "计次/计时"],
             ["history", "历史"],
             ["account", "账号"],
           ] as const
