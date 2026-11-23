@@ -109,7 +109,7 @@ export default function App() {
   const [form, setForm] = useState<Form | null>(null);
   const draggingHabit = useRef<string | null>(null);
   const touchHabit = useRef<string | null>(null);
-  const [page, setPage] = useState<"today" | "history" | "account">("today");
+  const [page, setPage] = useState<"today" | "numeric" | "history" | "account">("today");
   const [managing, setManaging] = useState(false);
   const [emojiDraft, setEmojiDraft] = useState("");
   const [draggingId, setDraggingId] = useState<string | null>(null);
@@ -931,6 +931,13 @@ export default function App() {
           </section>
         ) : !snapshot ? (
           <p>尚未读取到数据，请点击刷新重试。</p>
+        ) : page === "numeric" ? (
+          <section>
+            <NumericHabits
+              key={session.user.id}
+              accessToken={session.access_token}
+            />
+          </section>
         ) : page === "today" ? (
           <section>
             <div className="welcome">
@@ -965,13 +972,6 @@ export default function App() {
             >
               创建习惯
             </button>
-            {(import.meta.env.DEV ||
-              import.meta.env.BASE_URL === PREVIEW_BASE) && (
-              <NumericHabits
-                key={session.user.id}
-                accessToken={session.access_token}
-              />
-            )}
             <div className="habits">
               {active.map((h) => {
                 const habitDates = completedDates(snapshot, h.id);
@@ -1396,6 +1396,9 @@ export default function App() {
         {(
           [
             ["today", "今天"],
+            ...(import.meta.env.DEV || import.meta.env.BASE_URL === PREVIEW_BASE
+              ? ([["numeric", "计次/计时"]] as const)
+              : []),
             ["history", "历史"],
             ["account", "账号"],
           ] as const
