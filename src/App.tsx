@@ -1077,7 +1077,19 @@ export default function App() {
                       {h.emoji}
                     </span>
                     <div className="habit-main">
-                      <h3>{h.name}</h3>
+                      <button
+                        type="button"
+                        className="habit-detail-entry"
+                        aria-label={`查看「${h.name}」的打卡历史`}
+                        onClick={() => {
+                          setSelectedId(h.id);
+                          setMonth(today.slice(0, 7));
+                          setPage("history");
+                        }}
+                      >
+                        <span className="habit-title">{h.name}</span>
+                        <span className="habit-detail-hint">查看历史 ›</span>
+                      </button>
                       {celebrating[h.id] && (
                         <span className="card-success" key={celebrating[h.id]}>
                           <StarParticles />
@@ -1124,25 +1136,26 @@ export default function App() {
           </section>
         ) : (
           <section>
-            <h2>历史日历</h2>
+            <button
+              type="button"
+              className="secondary history-back"
+              onClick={() => setPage("today")}
+            >
+              ← 返回今天
+            </button>
+            <h2>
+              {selected
+                ? `${selected.emoji} ${selected.name} · 打卡历史`
+                : "打卡历史"}
+            </h2>
             {!snapshot.habits.length ? (
               <p>创建习惯后即可查看历史。</p>
             ) : (
               <>
-                <label>
-                  习惯
-                  <select
-                    value={selected?.id ?? ""}
-                    onChange={(e) => setSelectedId(e.target.value)}
-                  >
-                    {snapshot.habits.map((h) => (
-                      <option key={h.id} value={h.id}>
-                        {h.name}
-                        {h.archived_on ? "（已归档）" : ""}
-                      </option>
-                    ))}
-                  </select>
-                </label>
+                <p>
+                  累计打卡 {dates.size} 天 ·{" "}
+                  {selected?.archived_on ? "已归档" : "进行中"}
+                </p>
                 <label>
                   月份
                   <input
@@ -1399,7 +1412,6 @@ export default function App() {
           [
             ["today", "今天"],
             ["numeric", "计次/计时"],
-            ["history", "历史"],
             ["account", "账号"],
           ] as const
         ).map(([key, label]) => (
