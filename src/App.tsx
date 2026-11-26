@@ -961,23 +961,38 @@ export default function App() {
                       tabIndex={0}
                       aria-label={"长按拖动" + h.name + "调整顺序"}
                       draggable={!disabled && !hasOperations}
-                      onDragStart={() => { draggingHabit.current = h.id; }}
-                      onDragEnd={() => { draggingHabit.current = null; }}
+                      onDragStart={() => {
+                        draggingHabit.current = h.id;
+                      }}
+                      onDragEnd={() => {
+                        draggingHabit.current = null;
+                      }}
                       onPointerDown={(event) => {
-                        if (event.pointerType === "touch" && !disabled && !hasOperations) {
+                        if (
+                          event.pointerType === "touch" &&
+                          !disabled &&
+                          !hasOperations
+                        ) {
                           touchHabit.current = h.id;
                           event.currentTarget.setPointerCapture(event.pointerId);
                         }
                       }}
                       onPointerUp={(event) => {
                         if (touchHabit.current) {
-                          const target = document.elementFromPoint(event.clientX, event.clientY)?.closest("[data-habit-id]");
+                          const target = document
+                            .elementFromPoint(event.clientX, event.clientY)
+                            ?.closest("[data-habit-id]");
                           if (target instanceof HTMLElement)
-                            reorder(touchHabit.current, target.dataset.habitId ?? "");
+                            reorder(
+                              touchHabit.current,
+                              target.dataset.habitId ?? "",
+                            );
                           touchHabit.current = null;
                         }
                       }}
-                      onPointerCancel={() => { touchHabit.current = null; }}
+                      onPointerCancel={() => {
+                        touchHabit.current = null;
+                      }}
                     >
                       ☰
                     </span>
@@ -1149,9 +1164,12 @@ export default function App() {
                   });
                   return;
                 }
-                const original = snapshot.habits.find((h) => h.id === submitted.id);
+                const original = snapshot.habits.find(
+                  (h) => h.id === submitted.id,
+                );
                 if (!original) return;
-                const nameChanged = submitted.name.trim() !== original.name;
+                const nameChanged =
+                  submitted.name.trim() !== original.name;
                 const emojiChanged = emojiDraft.trim() !== original.emoji;
                 if (!nameChanged && !emojiChanged) return;
                 void (async () => {
@@ -1190,10 +1208,14 @@ export default function App() {
                   <select
                     value={form.color}
                     disabled={busy}
-                    onChange={(e) => setForm({ ...form, color: Number(e.target.value) })}
+                    onChange={(e) =>
+                      setForm({ ...form, color: Number(e.target.value) })
+                    }
                   >
                     {COLORS.map((c, i) => (
-                      <option key={c} value={i}>{c}</option>
+                      <option key={c} value={i}>
+                        {c}
+                      </option>
                     ))}
                   </select>
                 </label>
@@ -1217,11 +1239,18 @@ export default function App() {
                 <div className="editor-actions">
                   <button
                     disabled={
-                      disabled || hasOperations || !form.name.trim() ||
+                      disabled ||
+                      hasOperations ||
+                      !form.name.trim() ||
                       (() => {
-                        const original = snapshot.habits.find((h) => h.id === form.id);
-                        return !!original && form.name.trim() === original.name &&
-                          emojiDraft.trim() === original.emoji;
+                        const original = snapshot.habits.find(
+                          (h) => h.id === form.id,
+                        );
+                        return (
+                          !!original &&
+                          form.name.trim() === original.name &&
+                          emojiDraft.trim() === original.emoji
+                        );
                       })()
                     }
                   >
@@ -1232,23 +1261,47 @@ export default function App() {
                     className="secondary"
                     disabled={disabled || hasOperations}
                     onClick={() => {
-                      if (window.confirm("归档「" + form.name + "」？原有打卡记录会保留，可在已归档习惯中恢复。")) {
-                        void mutate("archive_habit", { p_id: form.id }).then((ok) => {
-                          if (ok) setForm(null);
-                        });
+                      if (
+                        window.confirm(
+                          "归档「" +
+                            form.name +
+                            "」？原有打卡记录会保留，可在已归档习惯中恢复。",
+                        )
+                      ) {
+                        void mutate("archive_habit", { p_id: form.id }).then(
+                          (ok) => {
+                            if (ok) setForm(null);
+                          },
+                        );
                       }
                     }}
                   >
                     归档
                   </button>
-                  <button type="button" className="secondary" disabled={busy} onClick={() => setForm(null)}>
+                  <button
+                    type="button"
+                    className="secondary"
+                    disabled={busy}
+                    onClick={() => setForm(null)}
+                  >
                     取消
                   </button>
                 </div>
               ) : (
                 <div className="row">
-                  <button disabled={disabled || hasOperations || !form.name.trim()}>创建习惯</button>
-                  <button type="button" className="secondary" disabled={busy} onClick={() => setForm(null)}>取消</button>
+                  <button
+                    disabled={disabled || hasOperations || !form.name.trim()}
+                  >
+                    创建习惯
+                  </button>
+                  <button
+                    type="button"
+                    className="secondary"
+                    disabled={busy}
+                    onClick={() => setForm(null)}
+                  >
+                    取消
+                  </button>
                 </div>
               )}
             </form>
