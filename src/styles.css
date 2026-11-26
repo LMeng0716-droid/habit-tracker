@@ -756,17 +756,33 @@ progress {
   user-select: none;
   -webkit-user-select: none;
 }
-.today-drag-handle:active { cursor: grabbing; background: #dcebe1; }
+.today-drag-handle:active {
+  cursor: grabbing;
+  background: #dcebe1;
+}
 .editor-actions {
   display: grid;
   grid-template-columns: 1.25fr 0.85fr 0.85fr;
   gap: 10px;
   margin-top: 18px;
 }
-.editor-actions button { min-width: 0; padding-inline: 10px; }
-.manage-habit-name { flex: 1; min-width: 0; overflow-wrap: anywhere; }
-.manage-edit-button { flex: 0 0 auto; }
+.editor-actions button {
+  min-width: 0;
+  padding-inline: 10px;
+}
+.manage-habit-name {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.manage-edit-button {
+  flex: 0 0 auto;
+}
 @media (max-width: 390px) {
-  .editor-actions { gap: 7px; }
-  .editor-actions button { font-size: 0.92rem; }
+  .editor-actions {
+    gap: 7px;
+  }
+  .editor-actions button {
+    font-size: 0.92rem;
+  }
 }
