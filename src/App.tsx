@@ -818,12 +818,10 @@ export default function App() {
                 <div className="manage-list">
                   {active.map((h) => (
                     <div className="manage-item" key={h.id}>
-                      <span className="manage-habit-name">
-                        {h.emoji} {h.name}
-                      </span>
                       <button
-                        className="secondary manage-edit-button"
+                        className="manage-pick"
                         disabled={disabled || hasOperations}
+                        aria-label={h.name + " ›"}
                         onClick={() => {
                           setEmojiDraft(h.emoji);
                           setForm({
@@ -834,7 +832,7 @@ export default function App() {
                           });
                         }}
                       >
-                        编辑
+                        <span>{h.emoji}</span> {h.name} <span>›</span>
                       </button>
                     </div>
                   ))}
