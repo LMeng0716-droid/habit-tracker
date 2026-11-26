@@ -999,6 +999,9 @@ export default function App() {
             >
               创建习惯
             </button>
+            {active.length > 1 && (
+              <p className="reorder-hint">长按左侧 ☰ 手柄，拖动即可调整习惯顺序</p>
+            )}
             <div className="habits">
               {active.map((h) => {
                 const habitDates = completedDates(snapshot, h.id);
