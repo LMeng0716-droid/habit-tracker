@@ -818,7 +818,9 @@ export default function App() {
                 <div className="manage-list">
                   {active.map((h) => (
                     <div className="manage-item" key={h.id}>
-                      <span className="manage-habit-name">{h.emoji} {h.name}</span>
+                      <span className="manage-habit-name">
+                        {h.emoji} {h.name}
+                      </span>
                       <button
                         className="secondary manage-edit-button"
                         disabled={disabled || hasOperations}
@@ -974,7 +976,9 @@ export default function App() {
                           !hasOperations
                         ) {
                           touchHabit.current = h.id;
-                          event.currentTarget.setPointerCapture(event.pointerId);
+                          event.currentTarget.setPointerCapture(
+                            event.pointerId,
+                          );
                         }
                       }}
                       onPointerUp={(event) => {
@@ -1168,8 +1172,7 @@ export default function App() {
                   (h) => h.id === submitted.id,
                 );
                 if (!original) return;
-                const nameChanged =
-                  submitted.name.trim() !== original.name;
+                const nameChanged = submitted.name.trim() !== original.name;
                 const emojiChanged = emojiDraft.trim() !== original.emoji;
                 if (!nameChanged && !emojiChanged) return;
                 void (async () => {
