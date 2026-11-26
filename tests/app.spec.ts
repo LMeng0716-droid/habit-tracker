@@ -184,7 +184,12 @@ async function backend(page: Page, snapshot = fixture()) {
           color: Number(args.p_color),
           created_date: today,
           archived_on: null,
+          emoji: "🌱",
         });
+      if (rpc === "set_habit_emoji") {
+        const habit = snapshot.habits.find((h) => h.id === args.p_id)!;
+        habit.emoji = String(args.p_emoji);
+      }
       if (rpc === "edit_habit") {
         const habit = snapshot.habits.find((h) => h.id === args.p_id)!;
         habit.name = String(args.p_name);
