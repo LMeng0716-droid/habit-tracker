@@ -326,11 +326,19 @@ test("create, edit, historical checkin and archive preserves today's completion"
   await page.getByRole("button", { name: "编辑习惯" }).click();
   await page.getByRole("button", { name: /运动.*›/ }).click();
   await page.getByLabel("名称", { exact: true }).fill("运动十分钟");
-  await page.getByRole("button", { name: "保存习惯" }).click();
+  await page.getByLabel("自定义习惯 Emoji").fill("🏃");
+  await expect(page.getByLabel("颜色")).toHaveCount(0);
+  await expect(page.locator(".editor-actions button")).toHaveText([
+    "保存修改",
+    "归档",
+    "取消",
+  ]);
+  await page.getByRole("button", { name: "保存修改" }).click();
   await page.getByRole("button", { name: "今天", exact: true }).click();
   const updated = page.locator("article").filter({
     has: page.getByRole("heading", { name: "运动十分钟", exact: true }),
   });
+  await expect(updated.locator(".habit-symbol")).toHaveText("🏃");
   await updated.getByRole("button", { name: "打卡", exact: true }).click();
   await page.getByRole("button", { name: "历史", exact: true }).click();
   await page.locator("select").first().selectOption({ label: "运动十分钟" });
