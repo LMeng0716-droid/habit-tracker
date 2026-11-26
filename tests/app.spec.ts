@@ -1174,6 +1174,7 @@ test("Today drag handle moves habits; Account editor has two fields and one save
   const api = await backend(page, twoHabits());
   await page.goto("./");
   await login(page);
+  await expect(page.getByText("长按左侧 ☰ 手柄，拖动即可调整习惯顺序")).toBeVisible();
   const drag = page.getByRole("button", { name: "拖动排序：阅读" });
   await expect(drag).toBeVisible();
   await drag.focus();
