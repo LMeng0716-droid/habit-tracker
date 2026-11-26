@@ -1293,7 +1293,7 @@ export default function App() {
                   <button
                     disabled={disabled || hasOperations || !form.name.trim()}
                   >
-                    创建习惯
+                    保存习惯
                   </button>
                   <button
                     type="button"
