@@ -812,3 +812,9 @@ progress {
     padding: 8px;
   }
 }
+
+.reorder-hint {
+  margin: 12px 4px 0;
+  color: #526858;
+  font-size: 14px;
+}
